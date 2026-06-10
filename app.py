@@ -190,7 +190,7 @@ st.markdown(GLASS_CSS, unsafe_allow_html=True)
 # Bump this whenever AppConfig or StockMonitor gains/loses fields. It is
 # part of the cache key, so a code update on a live server rebuilds the
 # monitor instead of serving a stale object (-> AttributeError).
-CONFIG_SCHEMA_VERSION = 8
+CONFIG_SCHEMA_VERSION = 9
 
 
 @st.cache_resource(show_spinner=False)
@@ -273,7 +273,21 @@ with st.sidebar:
 
     st.divider()
     st.markdown("**Stock**")
-    st.code(f"{cfg.trading_code}  ·  poll every {cfg.polling_interval_seconds // 60} min")
+    st.code(cfg.trading_code)
+
+    interval_min = st.number_input(
+        "Collect data every (minutes)",
+        min_value=1, max_value=60, step=1,
+        value=max(1, cfg.polling_interval_seconds // 60),
+        help="How often the price is scraped during trading hours. "
+             "Changes apply from the next collection. Minimum 1 minute "
+             "to stay gentle on dsebd.org.",
+        key="poll_interval_min",
+    )
+    if int(interval_min) != cfg.polling_interval_seconds // 60:
+        monitor.update_polling_interval(int(interval_min))
+        st.success(f"Data will be collected every {int(interval_min)} min "
+                   f"(from the next collection)")
 
     st.markdown("**Trading Hours (Asia/Dhaka)**")
     st.code(

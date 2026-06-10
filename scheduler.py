@@ -144,6 +144,17 @@ class StockMonitor:
         logger.info("Alert recipient updated to %s", number)
         return self.notifier.ready
 
+    def update_polling_interval(self, minutes: int) -> None:
+        """
+        Change how often data is collected (from the UI) and persist it.
+        Takes effect from the NEXT collection cycle; the loop re-reads
+        cfg.polling_interval_seconds every time it sleeps.
+        """
+        seconds = max(60, int(minutes) * 60)   # never hammer dsebd.org
+        self.cfg.polling_interval_seconds = seconds
+        save_user_setting("polling_interval_seconds", seconds)
+        logger.info("Polling interval updated to %d minutes", seconds // 60)
+
     def update_twilio_credentials(self, sid: str, token: str,
                                   sender: str) -> bool:
         """

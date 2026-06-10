@@ -214,5 +214,10 @@ def load_config() -> AppConfig:
                 "twilio_auth_token", "twilio_whatsapp_number"):
         if overrides.get(key):
             setattr(cfg, key, str(overrides[key]))
+    if overrides.get("polling_interval_seconds"):
+        try:
+            cfg.polling_interval_seconds = max(60, int(overrides["polling_interval_seconds"]))
+        except (TypeError, ValueError):
+            pass
 
     return cfg
