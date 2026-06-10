@@ -1,0 +1,23 @@
+# Core
+streamlit>=1.38.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+python-dotenv>=1.0.0
+
+# Data & charts
+pandas>=2.0.0
+numpy>=1.24.0
+plotly>=5.18.0
+
+# AI / anomaly detection
+scikit-learn>=1.3.0
+
+# WhatsApp notifications (messages only — no voice)
+twilio>=8.10.0
+
+# --- OPTIONAL: headless-browser fallback for dynamic rendering ---
+# Only needed if dsebd.org ever switches to JavaScript rendering.
+# After installing playwright, also run:  playwright install chromium
+# playwright>=1.40.0
+# selenium>=4.15.0

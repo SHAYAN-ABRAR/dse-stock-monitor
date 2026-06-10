@@ -1,0 +1,14 @@
+# Secrets & local config
+.env
+config.json
+.streamlit/secrets.toml
+
+# Runtime data
+dse_monitor.db
+scrape_log.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
