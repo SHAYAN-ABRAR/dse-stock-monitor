@@ -29,11 +29,11 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from ai_analyzer import AnalysisResult, PriceAnalyzer
-from config import AppConfig
+from config import AppConfig, save_user_setting
 from database import Database
 from notifier import WhatsAppNotifier
 from scraper import DSEScraper
-from utils import is_trading_hours, now_dhaka
+from utils import DHAKA_FMT, is_trading_hours, now_dhaka
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,7 @@ class StockMonitor:
 
         self._state = MonitorState()
         self._lock = threading.Lock()
+        self._poll_lock = threading.Lock()         # manual + scheduled polls never overlap
         self._stop_event = threading.Event()
         self._wake_event = threading.Event()       # lets Start fire instantly
         self._thread: Optional[threading.Thread] = None
@@ -106,6 +107,23 @@ class StockMonitor:
         if value:
             self._wake_event.set()
 
+    def poll_now(self) -> Dict[str, Any]:
+        """
+        Emergency / manual data collection: run one full
+        scrape -> analyze -> alert -> log cycle RIGHT NOW, regardless of
+        the polling timer, monitoring state, or trading hours.
+        Returns a fresh state snapshot for immediate UI feedback.
+        """
+        logger.info("Manual (emergency) data collection triggered")
+        try:
+            self._poll_once()
+        except Exception as exc:
+            logger.exception("Manual poll failed: %s", exc)
+            with self._lock:
+                self._state.last_error = str(exc)
+                self._state.last_scrape_success = False
+        return self.snapshot()
+
     def update_target_range(self, low: float, high: float) -> None:
         """Live-edit the target price range from the UI."""
         if low > high:
@@ -113,6 +131,35 @@ class StockMonitor:
         self.cfg.target_min_price = low
         self.cfg.target_max_price = high
         logger.info("Target range updated to %.2f-%.2f", low, high)
+
+    def update_recipient_number(self, number: str) -> bool:
+        """
+        Change the WhatsApp alert recipient at runtime (from the UI),
+        rebuild the notifier so it takes effect immediately, and persist
+        the number so it survives restarts. Returns notifier readiness.
+        """
+        self.cfg.recipient_whatsapp_number = number
+        self.notifier = WhatsAppNotifier(self.cfg)
+        save_user_setting("recipient_whatsapp_number", number)
+        logger.info("Alert recipient updated to %s", number)
+        return self.notifier.ready
+
+    def update_twilio_credentials(self, sid: str, token: str,
+                                  sender: str) -> bool:
+        """
+        Change the Twilio credentials at runtime (from the UI), rebuild
+        the notifier so they take effect immediately, and persist them
+        so they survive restarts. Returns notifier readiness.
+        """
+        self.cfg.twilio_account_sid = sid
+        self.cfg.twilio_auth_token = token
+        self.cfg.twilio_whatsapp_number = sender
+        self.notifier = WhatsAppNotifier(self.cfg)
+        save_user_setting("twilio_account_sid", sid)
+        save_user_setting("twilio_auth_token", token)
+        save_user_setting("twilio_whatsapp_number", sender)
+        logger.info("Twilio credentials updated (sender %s)", sender)
+        return self.notifier.ready
 
     def snapshot(self) -> Dict[str, Any]:
         """Thread-safe copy of the current state for rendering."""
@@ -184,10 +231,16 @@ class StockMonitor:
 
     # ------------------------------------------------------------------
     def _poll_once(self) -> None:
-        """One complete scrape -> analyze -> alert -> log cycle."""
+        """One complete scrape -> analyze -> alert -> log cycle.
+        Serialised by _poll_lock so a manual (emergency) collection and a
+        scheduled one can never run at the same time."""
+        with self._poll_lock:
+            self._poll_once_inner()
+
+    def _poll_once_inner(self) -> None:
         result = self.scraper.fetch_price()
         ts = now_dhaka(self.cfg)
-        ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
+        ts_str = ts.strftime(DHAKA_FMT)  # 12-hour format for messages/UI
 
         if not result.success:
             self._handle_failure(result.error, ts)
@@ -269,6 +322,12 @@ class StockMonitor:
                            ai_note: Optional[str], ts: datetime) -> bool:
         if not self._should_send_target_alert(price, ts):
             logger.info("Target alert suppressed (dedupe/cooldown).")
+            with self._lock:
+                self._state.last_alert_status = (
+                    f"⏳ LTP {price} is in range, but an alert was already "
+                    f"sent for this price — duplicate alerts are suppressed "
+                    f"(re-alerts after price leaves and re-enters the range)"
+                )
             return False
         result = self.notifier.send_target_alert(price, ts_str, ai_note)
         self.db.log_alert(ts, "target", price, result.message,
@@ -305,7 +364,7 @@ class StockMonitor:
         logger.error("Scrape failure #%d: %s", failures, error)
 
         if failures >= self.cfg.max_consecutive_failures:
-            ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
+            ts_str = ts.strftime(DHAKA_FMT)
             result = self.notifier.send_error_alert(error, ts_str)
             self.db.log_alert(ts, "error", None, result.message,
                               result.sent, result.error)

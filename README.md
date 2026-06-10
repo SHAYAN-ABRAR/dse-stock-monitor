@@ -17,7 +17,8 @@ Data source: <https://www.dsebd.org/latest_share_price_scroll_l.php>
 | **Scraping** | `requests` + `BeautifulSoup` first; automatic Playwright/Selenium fallback if the page becomes dynamic; last-resort text-proximity extraction near "OLYMPIC" |
 | **Condition alerts** | WhatsApp message when `143 ≤ LTP ≤ 145` (range editable live in the sidebar) |
 | **Dedupe** | No duplicate alerts for the same unchanged price (configurable), plus a cooldown |
-| **Trading hours** | Mon–Thu, 10:00–14:30 Asia/Dhaka, with an *Override Trading Hours* toggle |
+| **Trading hours** | Sun–Thu, continuous 10:00 AM–2:20 PM + post-closing 2:20–2:30 PM (Asia/Dhaka); automatic pause outside these hours |
+| **Emergency collection** | ⚡ *Collect Data Now* button scrapes instantly — full pipeline (AI + alerts + logging) without waiting for the next scheduled poll |
 | **AI analysis** | IsolationForest + robust z-score + >2% spike/drop rule on the last 20 prices; runs on a worker thread so it never blocks alerts |
 | **Error handling** | Per-scrape retries; after 3 consecutive failures: WhatsApp error alert + auto-pause + prominent dashboard banner |
 | **Logging** | Every scrape → SQLite (`dse_monitor.db`) **and** CSV (`scrape_log.csv`): timestamp, LTP, success, alert sent, AI status |
@@ -70,8 +71,8 @@ copy config.json.example config.json
 streamlit run app.py
 ```
 
-Open <http://localhost:8501>, press **▶ Start Tracking**, and (outside
-market hours) enable **Override Trading Hours** in the sidebar to test.
+Open <http://localhost:8501> and press **▶ Start Tracking**. Outside
+market hours, use **⚡ Collect Data Now** to test an instant collection.
 
 ---
 
@@ -172,8 +173,9 @@ immediately — even if the price hasn't reached the target range.
 | `TRADING_CODE` | `OLYMPIC` | DSE trading code to track |
 | `TARGET_MIN_PRICE` / `TARGET_MAX_PRICE` | `143` / `145` | Inclusive alert range (also editable live in the sidebar) |
 | `POLLING_INTERVAL_SECONDS` | `120` | Scrape frequency |
-| `TRADING_START` / `TRADING_END` | `10:00` / `14:30` | Market window (Asia/Dhaka) |
-| `trading_days` (json only) | `[0,1,2,3]` | Mon=0 … Sun=6 |
+| `TRADING_START` / `TRADING_END` | `10:00` / `14:30` | Full monitoring window incl. post-close (Asia/Dhaka) |
+| `TRADING_CONTINUOUS_END` | `14:20` | End of continuous trading (post-close runs until `TRADING_END`) |
+| `trading_days` (json only) | `[6,0,1,2,3]` | Sun–Thu (Mon=0 … Sun=6) |
 | `MAX_CONSECUTIVE_FAILURES` | `3` | Failures before error alert + auto-pause |
 | `REALERT_ON_SAME_PRICE` | `false` | Re-send alerts for an unchanged price |
 | `ALERT_COOLDOWN_SECONDS` | `600` | Minimum gap between target alerts |
@@ -185,11 +187,11 @@ Precedence: **Streamlit secrets → environment / .env → config.json → defau
 
 ## 🧪 Testing Without the Market
 
-1. Enable **Override Trading Hours** in the sidebar.
-2. Press **▶ Start Tracking** — a scrape fires immediately, then every 2 min.
-3. Widen the target range (e.g. `100 – 200`) in the sidebar to force a
-   target alert on the next poll.
-4. Use the sidebar **"Send test WhatsApp message"** button to verify Twilio
+1. Press **⚡ Collect Data Now** — it scrapes instantly, even while the
+   market is closed, and runs the full alert pipeline.
+2. Widen the target range (e.g. `100 – 200`) in the sidebar to force a
+   target alert on the next collection.
+3. Use the sidebar **"Send test WhatsApp message"** button to verify Twilio
    independently of scraping.
 
 ## 🛡️ Disclaimer

@@ -33,6 +33,32 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 CONFIG_JSON_PATH = PROJECT_ROOT / "config.json"
 
+# Settings changed from the dashboard at runtime (e.g. the recipient
+# WhatsApp number) are persisted here and applied with HIGHEST
+# precedence on startup -- they survive restarts and beat .env values.
+USER_SETTINGS_PATH = PROJECT_ROOT / "user_settings.json"
+
+
+def _load_user_settings() -> Dict[str, Any]:
+    if USER_SETTINGS_PATH.exists():
+        try:
+            return json.loads(USER_SETTINGS_PATH.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not parse user_settings.json: %s", exc)
+    return {}
+
+
+def save_user_setting(key: str, value: Any) -> None:
+    """Persist a dashboard-made setting so it survives app restarts."""
+    settings = _load_user_settings()
+    settings[key] = value
+    try:
+        USER_SETTINGS_PATH.write_text(
+            json.dumps(settings, indent=2), encoding="utf-8"
+        )
+    except OSError as exc:
+        logger.error("Could not write user_settings.json: %s", exc)
+
 
 def _streamlit_secret(key: str) -> Optional[str]:
     """Read a key from st.secrets without crashing outside Streamlit."""
@@ -83,9 +109,13 @@ class AppConfig:
     max_consecutive_failures: int = 3            # then alert + auto-pause
 
     # --- Trading hours (Asia/Dhaka) ---
+    # DSE: Sun-Thu. Continuous trading 10:00-14:20, then a post-closing
+    # session 14:20-14:30. Monitoring runs through post-close (LTP can
+    # still print there), so trading_end is 14:30.
     timezone: str = "Asia/Dhaka"
-    trading_days: tuple = (0, 1, 2, 3)           # Mon=0 ... Thu=3
+    trading_days: tuple = (6, 0, 1, 2, 3)        # Sun=6, Mon=0 ... Thu=3
     trading_start: str = "10:00"
+    trading_continuous_end: str = "14:20"        # display only
     trading_end: str = "14:30"
 
     # --- AI / anomaly detection ---
@@ -108,15 +138,21 @@ class AppConfig:
     # ------------------------------------------------------------------
     @property
     def twilio_configured(self) -> bool:
-        """True when all four Twilio fields are present."""
-        return all(
-            [
-                self.twilio_account_sid,
-                self.twilio_auth_token,
-                self.twilio_whatsapp_number,
-                self.recipient_whatsapp_number,
-            ]
-        )
+        """
+        True when all four Twilio fields are present AND none of them is
+        an obvious placeholder copied from .env.example.
+        """
+        values = [
+            self.twilio_account_sid,
+            self.twilio_auth_token,
+            self.twilio_whatsapp_number,
+            self.recipient_whatsapp_number,
+        ]
+        if not all(values):
+            return False
+        joined = " ".join(values).lower()
+        placeholders = ("xxxx", "your_auth_token", "your_account_sid")
+        return not any(hint in joined for hint in placeholders)
 
     def to_safe_dict(self) -> Dict[str, Any]:
         """Dict representation with secrets masked (for display/debug)."""
@@ -153,6 +189,7 @@ def load_config() -> AppConfig:
         timezone=str(g("timezone", defaults.timezone)),
         trading_days=tuple(json_cfg.get("trading_days", defaults.trading_days)),
         trading_start=str(g("trading_start", defaults.trading_start)),
+        trading_continuous_end=str(g("trading_continuous_end", defaults.trading_continuous_end)),
         trading_end=str(g("trading_end", defaults.trading_end)),
         ai_enabled=_as_bool(g("ai_enabled", defaults.ai_enabled)),
         ai_history_size=int(g("ai_history_size", defaults.ai_history_size)),
@@ -170,5 +207,12 @@ def load_config() -> AppConfig:
     if cfg.target_min_price > cfg.target_max_price:
         logger.warning("target_min_price > target_max_price; swapping.")
         cfg.target_min_price, cfg.target_max_price = cfg.target_max_price, cfg.target_min_price
+
+    # Dashboard-made overrides win over everything else.
+    overrides = _load_user_settings()
+    for key in ("recipient_whatsapp_number", "twilio_account_sid",
+                "twilio_auth_token", "twilio_whatsapp_number"):
+        if overrides.get(key):
+            setattr(cfg, key, str(overrides[key]))
 
     return cfg

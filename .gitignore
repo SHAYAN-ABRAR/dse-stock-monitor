@@ -1,6 +1,7 @@
 # Secrets & local config
 .env
 config.json
+user_settings.json
 .streamlit/secrets.toml
 
 # Runtime data

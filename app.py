@@ -13,16 +13,20 @@ presentation + control layer.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Dict
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from config import AppConfig, load_config
 from scheduler import StockMonitor
-from utils import fmt_ts, is_trading_hours, now_dhaka, setup_logging
+from utils import (fmt_hhmm_12, fmt_ts, is_trading_hours,
+                   is_valid_whatsapp_number, normalize_whatsapp_number,
+                   now_dhaka, parse_hhmm, setup_logging)
 
 # ======================================================================
 # Page setup
@@ -111,6 +115,19 @@ div.stButton > button {
 div.stButton > button[kind="primary"] {
     background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; border: none;
 }
+/* emergency collect-now button — high-visibility amber/red gradient */
+.st-key-btn_emergency button {
+    background: linear-gradient(135deg, #f59e0b, #dc2626) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.03em;
+    box-shadow: 0 0 16px rgba(220,38,38,0.40);
+}
+.st-key-btn_emergency button:hover {
+    filter: brightness(1.15);
+    box-shadow: 0 0 24px rgba(220,38,38,0.65);
+}
 /* grayed-out (unclickable) state */
 div.stButton > button:disabled {
     background: rgba(255,255,255,0.07) !important;
@@ -144,6 +161,9 @@ div.stButton > button:disabled {
     50%      { opacity: 0.2; }
 }
 
+/* hide Streamlit's "Press Enter to submit/apply" hints inside inputs */
+[data-testid="InputInstructions"] { display: none !important; }
+
 /* ---------- error banner ---------- */
 .error-banner {
     background: linear-gradient(135deg, rgba(248,113,113,0.20), rgba(248,113,113,0.08));
@@ -167,14 +187,27 @@ st.markdown(GLASS_CSS, unsafe_allow_html=True)
 # ======================================================================
 # Singletons — survive Streamlit reruns; one per server process
 # ======================================================================
+# Bump this whenever AppConfig or StockMonitor gains/loses fields. It is
+# part of the cache key, so a code update on a live server rebuilds the
+# monitor instead of serving a stale object (-> AttributeError).
+CONFIG_SCHEMA_VERSION = 8
+
+
 @st.cache_resource(show_spinner=False)
-def get_monitor() -> StockMonitor:
+def get_monitor(schema_version: int) -> StockMonitor:
     cfg = load_config()
     return StockMonitor(cfg)
 
 
-monitor = get_monitor()
+monitor = get_monitor(CONFIG_SCHEMA_VERSION)
 cfg: AppConfig = monitor.cfg
+
+# Self-heal: if a cached monitor from an older code version is still
+# missing current fields, drop the cache and rebuild once.
+if not hasattr(cfg, "trading_continuous_end"):
+    get_monitor.clear()
+    monitor = get_monitor(CONFIG_SCHEMA_VERSION)
+    cfg = monitor.cfg
 
 
 # ======================================================================
@@ -238,39 +271,203 @@ with st.sidebar:
         monitor.update_target_range(float(new_min), float(new_max))
         st.success(f"Range updated: {new_min:g} – {new_max:g}")
 
-    override = st.toggle(
-        "Override Trading Hours",
-        value=monitor.snapshot()["override"],
-        help="Monitor at any time, ignoring the Mon–Thu 10:00–14:30 window.",
-    )
-    monitor.set_override(override)
-
     st.divider()
     st.markdown("**Stock**")
     st.code(f"{cfg.trading_code}  ·  poll every {cfg.polling_interval_seconds // 60} min")
 
     st.markdown("**Trading Hours (Asia/Dhaka)**")
-    st.code(f"Mon–Thu · {cfg.trading_start} – {cfg.trading_end}")
-
-    st.markdown("**AI Analysis**")
-    st.code("ENABLED ✓" if cfg.ai_enabled else "DISABLED ✗")
-    st.caption("Toggle via AI_ENABLED in .env / config.json, then restart.")
+    st.code(
+        f"Sun–Thu\n"
+        f"Continuous : {fmt_hhmm_12(cfg.trading_start)} – {fmt_hhmm_12(cfg.trading_continuous_end)}\n"
+        f"Post-close : {fmt_hhmm_12(cfg.trading_continuous_end)} – {fmt_hhmm_12(cfg.trading_end)}"
+    )
 
     st.markdown("**WhatsApp (Twilio)**")
+
+    # Read-only display of where alerts currently go. The number itself
+    # is changed inside the credentials panel below.
+    recipient_now = normalize_whatsapp_number(cfg.recipient_whatsapp_number)
+    st.code(f"Alerts go to: {recipient_now or 'Not set'}")
+
+    # --- Full Twilio credentials, editable in the site -----------------
+    # Click to expand; changes apply immediately and are remembered
+    # across restarts (saved to user_settings.json, which is gitignored).
+    with st.expander("🔐 Twilio Credentials — click to view / change"):
+        if cfg.twilio_configured:
+            st.success("All credentials are saved on this device — "
+                       "nothing to re-enter. The grey text in each box "
+                       "shows the saved value.", icon="💾")
+        st.caption("These credentials send the WhatsApp alerts. Get them "
+                   "from [console.twilio.com](https://console.twilio.com). "
+                   "Changes apply instantly — no restart needed. "
+                   "**Leave a field empty to keep its saved value** — "
+                   "only type in a box to change that one setting.")
+
+        # Placeholders show the current value (token masked) so the
+        # fields start EMPTY — the client types only what they want
+        # to change, no backspacing needed.
+        sid_now = cfg.twilio_account_sid.strip()
+        sid_ph = (f"Current: {sid_now[:6]}…{sid_now[-4:]}"
+                  if cfg.twilio_configured else "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+        token_ph = ("Current token saved (hidden)"
+                    if cfg.twilio_configured else "Paste your Auth Token")
+        sender_now = normalize_whatsapp_number(cfg.twilio_whatsapp_number)
+        recipient_now_ph = recipient_now or "+8801XXXXXXXXX"
+
+        with st.form("twilio_creds_form", border=False, enter_to_submit=False):
+            sid_in = st.text_input(
+                "Account SID", value="", placeholder=sid_ph,
+                help="Starts with 'AC' followed by 32 characters.")
+            token_in = st.text_input(
+                "Auth Token", value="", type="password", placeholder=token_ph,
+                help="Hidden for security. Paste the token from the Twilio console.")
+            sender_in = st.text_input(
+                "Twilio WhatsApp sender number", value="",
+                placeholder=sender_now or "+14155238886",
+                help="The number Twilio sends FROM. Sandbox default: +14155238886")
+            recipient_in = st.text_input(
+                "Send alerts to this WhatsApp number", value="",
+                placeholder=recipient_now_ph,
+                help="The number that RECEIVES the alerts. International "
+                     "format, e.g. +8801712345678. On the Twilio sandbox, a "
+                     "new number must first send the 'join <code>' message "
+                     "to the sandbox number before it can receive alerts.")
+            save_creds = st.form_submit_button(
+                "💾 Save credentials", type="primary", use_container_width=True)
+
+        if save_creds:
+            # Empty field -> keep the currently configured value.
+            sid_clean = sid_in.strip() or sid_now
+            token_clean = token_in.strip() or cfg.twilio_auth_token.strip()
+            sender_clean = normalize_whatsapp_number(sender_in) or sender_now
+            recipient_clean = (normalize_whatsapp_number(recipient_in)
+                               or recipient_now)
+            problems = []
+            if not re.fullmatch(r"AC[0-9a-fA-F]{32}", sid_clean):
+                problems.append("Account SID must be 'AC' + 32 characters "
+                                "(copied exactly from the Twilio console).")
+            if len(token_clean) < 16 or "your_auth_token" in token_clean.lower():
+                problems.append("Auth Token looks invalid — paste the real "
+                                "token, not the placeholder.")
+            if not is_valid_whatsapp_number(sender_clean):
+                problems.append("Sender number must be international format, "
+                                "e.g. +14155238886.")
+            if not is_valid_whatsapp_number(recipient_clean):
+                problems.append("Recipient number must be international "
+                                "format, e.g. +8801712345678.")
+            if problems:
+                for p in problems:
+                    st.error(p)
+            else:
+                monitor.update_twilio_credentials(
+                    sid_clean, token_clean, sender_clean)
+                ready = monitor.update_recipient_number(recipient_clean)
+                st.toast(f"Saved — alerts go to {recipient_clean}"
+                         + ("" if ready else " (check credentials)"),
+                         icon="✅" if ready else "⚠️")
+                st.rerun()  # refresh the 'Alerts go to' display above
+
     if monitor.notifier.ready:
         st.success("Twilio configured", icon="✅")
         if st.button("Send test WhatsApp message"):
             res = monitor.notifier.send(
-                f"✅ Test message from DSE Monitor — {now_dhaka(cfg):%Y-%m-%d %H:%M:%S}"
+                f"✅ Test message from DSE Monitor — {now_dhaka(cfg):%Y-%m-%d %I:%M:%S %p}"
             )
             if res.sent:
                 st.success(f"Sent! SID: {res.sid}")
             else:
                 st.error(f"Failed: {res.error}")
     else:
-        st.warning("Twilio not configured — alerts disabled. "
-                   "Set credentials in .env or Streamlit secrets.", icon="⚠️")
+        st.warning("Twilio not configured — alerts disabled. Open "
+                   "**🔐 Twilio Credentials** above and enter your real "
+                   "Account SID, Auth Token and sender number.", icon="⚠️")
 
+
+# ======================================================================
+# Live clock — ticks every second client-side (no app reruns needed),
+# with a countdown to the next market open / close underneath.
+# ======================================================================
+_CLOCK_HTML = """
+<div style="
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    font-family:'Segoe UI', system-ui, sans-serif;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px; padding: 10px 18px;
+    backdrop-filter: blur(14px);">
+    <div style="display:flex; align-items:center; gap:14px;">
+        <span id="liveclock" style="
+            font-size: 1.9rem; font-weight: 800; letter-spacing: 0.08em;
+            color: #ffffff; font-variant-numeric: tabular-nums;">--:--:--</span>
+        <span id="livedate" style="font-size:0.85rem; color:#9fb3d9;"></span>
+    </div>
+    <span id="countdown" style="font-size:0.78rem; color:#8ea4cc;
+          letter-spacing:0.04em; font-variant-numeric: tabular-nums;"></span>
+</div>
+<script>
+    // Injected from the Python config:
+    const TZ = "__TZ__";
+    const TRADING_DAYS = [__DAYS__];   // JS getDay(): Sun=0 ... Sat=6
+    const START_MIN = __START_MIN__;   // market open, minutes after midnight
+    const END_MIN = __END_MIN__;       // market close incl. post-close session
+
+    function dhakaNow() {
+        return new Date(new Date().toLocaleString("en-US", { timeZone: TZ }));
+    }
+    function fmtDur(ms) {
+        let s = Math.max(0, Math.floor(ms / 1000));
+        const d = Math.floor(s / 86400); s -= d * 86400;
+        const h = Math.floor(s / 3600); s -= h * 3600;
+        const m = Math.floor(s / 60);   s -= m * 60;
+        const core = [h, m, s].map(x => String(x).padStart(2, "0")).join(":");
+        return d > 0 ? d + "d " + core : core;
+    }
+    function countdownText() {
+        const now = dhakaNow();
+        const mins = now.getHours() * 60 + now.getMinutes();
+        if (TRADING_DAYS.includes(now.getDay()) && mins >= START_MIN && mins < END_MIN) {
+            const end = new Date(now);
+            end.setHours(Math.floor(END_MIN / 60), END_MIN % 60, 0, 0);
+            return "\\uD83D\\uDFE2 Market closes in " + fmtDur(end - now);
+        }
+        // Closed: find the next trading day's opening bell.
+        for (let d = 0; d < 8; d++) {
+            const cand = new Date(now);
+            cand.setDate(now.getDate() + d);
+            cand.setHours(Math.floor(START_MIN / 60), START_MIN % 60, 0, 0);
+            if (TRADING_DAYS.includes(cand.getDay()) && cand > now) {
+                return "\\u23F3 Market opens in " + fmtDur(cand - now);
+            }
+        }
+        return "";
+    }
+    function tick() {
+        const now = new Date();
+        document.getElementById("liveclock").textContent =
+            now.toLocaleTimeString("en-US", { timeZone: TZ, hour12: true,
+                hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        document.getElementById("livedate").textContent =
+            now.toLocaleDateString("en-US", { timeZone: TZ,
+                weekday: "long", year: "numeric", month: "short", day: "numeric" })
+            + " \\u00B7 Dhaka (BDT)";
+        document.getElementById("countdown").textContent = countdownText();
+    }
+    tick();
+    setInterval(tick, 1000);
+</script>
+"""
+
+_start_t = parse_hhmm(cfg.trading_start)
+_end_t = parse_hhmm(cfg.trading_end)
+components.html(
+    _CLOCK_HTML
+    .replace("__TZ__", cfg.timezone)
+    # Python weekday (Mon=0..Sun=6) -> JS getDay() (Sun=0..Sat=6)
+    .replace("__DAYS__", ",".join(str((d + 1) % 7) for d in sorted(cfg.trading_days)))
+    .replace("__START_MIN__", str(_start_t.hour * 60 + _start_t.minute))
+    .replace("__END_MIN__", str(_end_t.hour * 60 + _end_t.minute)),
+    height=102,
+)
 
 # ======================================================================
 # Hero header + Start/Stop controls
@@ -295,11 +492,13 @@ def live_dashboard() -> None:
     running: bool = snap["running"]
     open_now, hours_reason = is_trading_hours(cfg)
 
-    # ---- Start / Stop controls + LIVE badge ---------------------------
+    # ---- Start / Stop / Emergency controls + LIVE badge ----------------
     # While running:  Start is grayed out & unclickable, Stop gets the
     # colorful gradient, and a pulsing red LIVE badge appears.
-    ctrl1, ctrl2, badge_col, _sp = st.columns(
-        [1.2, 1.2, 1.1, 2.5], vertical_alignment="center"
+    # The emergency button is ALWAYS clickable — it collects data
+    # instantly without waiting for the next scheduled poll.
+    ctrl1, ctrl2, ctrl3, badge_col, _sp = st.columns(
+        [1.2, 1.2, 1.4, 1.1, 1.1], vertical_alignment="center"
     )
     with ctrl1:
         if st.button("▶ Start Tracking",
@@ -316,6 +515,19 @@ def live_dashboard() -> None:
                      use_container_width=True, key="btn_stop"):
             monitor.stop()
             st.toast("Monitoring stopped", icon="🔴")
+            st.rerun()
+    with ctrl3:
+        if st.button("⚡ Collect Data Now",
+                     use_container_width=True, key="btn_emergency",
+                     help="Emergency collection: scrape the price right now "
+                          "instead of waiting for the next scheduled poll. "
+                          "Alerts fire immediately if the price is in range."):
+            with st.spinner("Collecting data now…"):
+                fresh = monitor.poll_now()
+            if fresh["last_scrape_success"]:
+                st.toast(f"Collected! LTP = {fresh['last_price']}", icon="⚡")
+            else:
+                st.toast(f"Collection failed: {fresh['last_error']}", icon="❌")
             st.rerun()
     with badge_col:
         if running:
@@ -349,13 +561,24 @@ def live_dashboard() -> None:
     else:
         run_pill = pill("● STOPPED", "red")
     hours_pill = pill("MARKET OPEN", "green") if open_now else pill("MARKET CLOSED", "amber")
-    override_pill = pill("OVERRIDE ON", "blue") if snap["override"] else ""
+    # Next scheduled data collection — so the client always knows when
+    # the next automatic scrape will happen.
+    next_pill = ""
+    next_caption = ""
+    if running:
+        if snap["next_poll_at"]:
+            next_time = snap["next_poll_at"].strftime("%I:%M:%S %p").lstrip("0")
+            next_pill = pill(f"⏱ NEXT COLLECTION · {next_time}", "blue")
+            next_caption = f" · Next data collection time: {next_time}"
+        else:
+            next_pill = pill("⏱ WAITING FOR MARKET OPEN", "amber")
+            next_caption = " · Next data collection: when the market opens"
+
     st.markdown(
-        f'{run_pill}&nbsp;&nbsp;{hours_pill}&nbsp;&nbsp;{override_pill}',
+        f'{run_pill}&nbsp;&nbsp;{hours_pill}&nbsp;&nbsp;{next_pill}',
         unsafe_allow_html=True,
     )
-    st.caption(hours_reason + (f" · next poll: {fmt_ts(snap['next_poll_at'])}"
-                               if snap["next_poll_at"] else ""))
+    st.caption(hours_reason + next_caption)
 
     # ---- KPI cards row 1 ----------------------------------------------
     price = snap["last_price"]
@@ -379,7 +602,8 @@ def live_dashboard() -> None:
                 unsafe_allow_html=True)
     c4.markdown(kpi_card("Trading Hours",
                          "OPEN" if open_now else "CLOSED",
-                         f"Mon–Thu · {cfg.trading_start}–{cfg.trading_end} BDT",
+                         f"Sun–Thu · {fmt_hhmm_12(cfg.trading_start)}–{fmt_hhmm_12(cfg.trading_continuous_end)}"
+                         f" · post-close till {fmt_hhmm_12(cfg.trading_end)}",
                          "kpi-accent-green" if open_now else "kpi-accent-amber"),
                 unsafe_allow_html=True)
 
@@ -414,12 +638,14 @@ def live_dashboard() -> None:
     st.markdown('<div class="section-title">📊 Recent Price Trend</div>',
                 unsafe_allow_html=True)
     scrapes = monitor.db.recent_scrapes(limit=200)
-    chart_df = scrapes[scrapes["success"] == 1].iloc[::-1]  # chronological
+    chart_df = scrapes[scrapes["success"] == 1].iloc[::-1].copy()  # chronological
     if not chart_df.empty:
+        chart_df["timestamp"] = pd.to_datetime(chart_df["timestamp"])
         render_price_chart(chart_df)
     else:
-        st.info("No price data yet. Press **Start Tracking** to begin "
-                "(enable *Override Trading Hours* if the market is closed).")
+        st.info("No price data yet. Press **Start Tracking** to begin, or "
+                "**⚡ Collect Data Now** for an instant collection (works "
+                "even while the market is closed).")
 
     left, right = st.columns([1, 1])
     with left:
@@ -429,6 +655,9 @@ def live_dashboard() -> None:
         if alerts.empty:
             st.caption("No alerts sent yet.")
         else:
+            alerts = alerts.copy()
+            alerts["timestamp"] = pd.to_datetime(
+                alerts["timestamp"]).dt.strftime("%Y-%m-%d %I:%M:%S %p")
             alerts = alerts.rename(columns={
                 "timestamp": "Time", "alert_type": "Type",
                 "price": "LTP", "message": "Message", "sent": "Sent"})
@@ -440,7 +669,10 @@ def live_dashboard() -> None:
         if scrapes.empty:
             st.caption("No scrapes logged yet.")
         else:
-            log_df = scrapes.rename(columns={
+            log_df = scrapes.copy()
+            log_df["timestamp"] = pd.to_datetime(
+                log_df["timestamp"]).dt.strftime("%Y-%m-%d %I:%M:%S %p")
+            log_df = log_df.rename(columns={
                 "timestamp": "Time", "ltp": "LTP", "success": "OK",
                 "alert_sent": "Alert", "ai_status": "AI Status",
                 "error": "Error"})
@@ -448,7 +680,7 @@ def live_dashboard() -> None:
                          height=300, hide_index=True)
 
     st.caption(
-        f"Dashboard refreshed {now_dhaka(cfg):%Y-%m-%d %H:%M:%S} (Asia/Dhaka) · "
+        f"Dashboard refreshed {now_dhaka(cfg):%Y-%m-%d %I:%M:%S %p} (Asia/Dhaka) · "
         f"polling every {cfg.polling_interval_seconds // 60} min · "
         f"data: dsebd.org"
     )

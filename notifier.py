@@ -10,6 +10,7 @@ contains no Twilio Voice / phone-call functionality of any kind.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -17,6 +18,14 @@ from typing import Optional
 from config import AppConfig
 
 logger = logging.getLogger(__name__)
+
+# Twilio exception messages embed terminal colour codes (e.g. "\x1b[31m")
+# that render as garbage like "[31m[49m" in the dashboard -- strip them.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _clean_error(exc: Exception) -> str:
+    return _ANSI_RE.sub("", str(exc)).strip()
 
 
 @dataclass
@@ -74,7 +83,7 @@ class WhatsAppNotifier:
             return NotifyResult(sent=True, message=body, sid=msg.sid or "")
         except Exception as exc:
             logger.error("WhatsApp send failed: %s", exc)
-            return NotifyResult(sent=False, message=body, error=str(exc))
+            return NotifyResult(sent=False, message=body, error=_clean_error(exc))
 
     # ------------------------------------------------------------------
     # Message builders
