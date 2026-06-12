@@ -22,17 +22,53 @@ from __future__ import annotations
 
 import logging
 import re
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
+import certifi
 import requests
 from bs4 import BeautifulSoup
 
 from config import AppConfig
 
 logger = logging.getLogger(__name__)
+
+# www.dsebd.org's server omits its intermediate CA certificate
+# ("Sectigo Public Server Authentication CA DV R36") from the TLS
+# handshake, so default certificate verification fails with
+# CERTIFICATE_VERIFY_FAILED. We ship that intermediate with the app and
+# append it to certifi's trust store so the chain can be completed --
+# verification stays fully enabled.
+_EXTRA_CA_FILE = Path(__file__).resolve().parent / "certs" / "sectigo-dv-r36-intermediate.pem"
+_ca_bundle_cache: Optional[str] = None
+
+
+def _ca_bundle_path() -> str:
+    """Return a CA bundle path = certifi roots + bundled DSE intermediate."""
+    global _ca_bundle_cache
+    if _ca_bundle_cache is not None:
+        return _ca_bundle_cache
+    bundle = certifi.where()
+    if _EXTRA_CA_FILE.exists():
+        try:
+            combined = Path(tempfile.gettempdir()) / "dse_monitor_ca_bundle.pem"
+            combined.write_text(
+                Path(bundle).read_text(encoding="utf-8")
+                + "\n"
+                + _EXTRA_CA_FILE.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            bundle = str(combined)
+        except OSError as exc:
+            logger.warning(
+                "Could not build combined CA bundle (%s); using certifi default.", exc
+            )
+    _ca_bundle_cache = bundle
+    return bundle
 
 # A sane price band used to validate extracted values (rejects volumes,
 # percentages and obviously broken parses). Wide enough for any DSE stock.
@@ -81,6 +117,7 @@ class DSEScraper:
         self.cfg = cfg
         self._session = requests.Session()
         self._session.headers.update(HEADERS)
+        self._session.verify = _ca_bundle_path()
 
     # ------------------------------------------------------------------
     # Public API
