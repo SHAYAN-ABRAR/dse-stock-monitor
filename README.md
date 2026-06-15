@@ -1,31 +1,38 @@
-# 📈 DSE Stock Monitor — OLYMPIC
+# 📈 DSE Terminal — Live Multi-Stock Monitoring Platform
 
-A production-ready **Streamlit** dashboard that monitors the **Dhaka Stock
-Exchange (DSE)** latest share price page, tracks **OLYMPIC**'s LTP every
-2 minutes during trading hours, and sends **WhatsApp alerts** (via Twilio)
-when the price enters your target range — with built-in **AI anomaly
-detection**, full logging, and a premium glassmorphism UI.
+A production-ready **Streamlit** platform that monitors the **entire Dhaka
+Stock Exchange (DSE)** — all ~396 listed instruments — in real time. Browse
+and search every stock, build a personal dashboard of live glassmorphic
+cards, open deep-dive analytics with professional charts, save watchlists,
+and get **WhatsApp alerts** (via Twilio) the moment a price condition is met
+— all wrapped in a premium, client-ready interface.
 
 Data source: <https://www.dsebd.org/latest_share_price_scroll_l.php>
+(one request returns the whole market).
+
+> This is **Version 2** — a complete expansion of the original single-stock
+> (OLYMPIC) monitor into a full portfolio-style platform.
 
 ---
 
 ## ✨ Features
 
-| Feature | Details |
+| Area | What you get |
 |---|---|
-| **Scraping** | `requests` + `BeautifulSoup` first; automatic Playwright/Selenium fallback if the page becomes dynamic; last-resort text-proximity extraction near "OLYMPIC" |
-| **Condition alerts** | WhatsApp message when `143 ≤ LTP ≤ 145` (range editable live in the sidebar) |
-| **Dedupe** | No duplicate alerts for the same unchanged price (configurable), plus a cooldown |
-| **Trading hours** | Sun–Thu, continuous 10:00 AM–2:20 PM + post-closing 2:20–2:30 PM (Asia/Dhaka); automatic pause outside these hours |
-| **Emergency collection** | ⚡ *Collect Data Now* button scrapes instantly — full pipeline (AI + alerts + logging) without waiting for the next scheduled poll |
-| **AI analysis** | IsolationForest + robust z-score + >2% spike/drop rule on the last 20 prices; runs on a worker thread so it never blocks alerts |
-| **Error handling** | Per-scrape retries; after 3 consecutive failures: WhatsApp error alert + auto-pause + prominent dashboard banner |
-| **Logging** | Every scrape → SQLite (`dse_monitor.db`) **and** CSV (`scrape_log.csv`): timestamp, LTP, success, alert sent, AI status |
-| **UI** | Glassmorphism cards, gradients, KPI tiles, live Plotly chart, alert history, auto-refresh every 10 s |
+| **Whole-market data** | One scrape pulls all ~396 stocks: index #, code, LTP, high, low, close, prev-close (YCP), change, change %, trades, value, volume |
+| **Market Overview** | Live breadth (advancers/decliners), turnover & volume KPIs, top gainers / losers / most-active, and a searchable table of every instrument |
+| **Searchable multi-select** | Pick any number of stocks by trading code or index number (type-ahead, keyboard nav, multi-select) |
+| **Live dashboard** | Selected stocks render as responsive, colour-coded **glass cards** (green up / red down / blue flat) that auto-refresh — hover animations & micro-interactions |
+| **Deep-dive analytics** | Per-stock page: basic info, price data, trading activity, day-range indicator, performance gauge (bullish/neutral/bearish), AI momentum, and Plotly charts (live price trend, volume, price-vs-volume) |
+| **Historical storage** | Tracked stocks are recorded to **SQLite** (`dse_market.db`) for trend charts & analysis |
+| **Watchlists** | Create / load / delete named groups ("Banking", "High Volume", …); load one onto the dashboard in a click |
+| **Price alerts** | Per-stock rules — `above`, `below`, `enters a band`, `exits a band` — with per-rule cooldown; fires a **WhatsApp** message and logs every alert |
+| **AI anomaly detection** | IsolationForest + robust z-score + spike/drop rule per tracked stock, surfaced as a momentum indicator |
+| **Real-time** | Background thread re-scrapes the market on a configurable cadence; cards & charts update without a full page reload |
+| **Premium UI** | Glassmorphism, gradient accents, animated hero, live Dhaka clock with market-open/close countdown, custom scrollbars, refined typography |
 
-> ⚠️ WhatsApp **messages only**. This project contains **no** Twilio Voice or
-> phone-call functionality whatsoever.
+> ⚠️ Alerts are **WhatsApp messages only**. This project contains **no**
+> Twilio Voice / phone-call functionality whatsoever.
 
 ---
 
@@ -33,26 +40,47 @@ Data source: <https://www.dsebd.org/latest_share_price_scroll_l.php>
 
 ```
 DSE/
-├── app.py                 # Streamlit dashboard (UI + controls)
-├── scraper.py             # DSE scraping with fallbacks & retries
-├── notifier.py            # Twilio WhatsApp messaging (no voice)
-├── ai_analyzer.py         # Anomaly detection (IsolationForest + z-score + rule)
-├── scheduler.py           # Background monitoring thread
-├── database.py            # SQLite + CSV logging
-├── config.py              # Configuration loading (.env / secrets / json)
-├── utils.py               # Trading hours, timezone, logging helpers
+├── app.py                  # Entry: page config, theme, st.navigation, sidebar
+├── runtime.py              # Cached MarketMonitor singleton + shared chrome
+│
+├── views/                  # One file per navigation page
+│   ├── overview.py         #   Market Overview (landing)
+│   ├── dashboard.py        #   My Dashboard (multi-stock live cards)
+│   ├── details.py          #   Stock Details (deep-dive analytics)
+│   ├── watchlists.py       #   Watchlists (CRUD)
+│   ├── alerts.py           #   Alert rules + history
+│   └── settings.py         #   Twilio setup, test message, status
+│
+├── components/             # Reusable UI building blocks
+│   ├── styles.py           #   Global premium CSS theme
+│   ├── cards.py            #   Stock-card grid renderer
+│   ├── charts.py           #   Plotly charts (trend, volume, gauge, range)
+│   └── detail.py           #   Detailed analytics view
+│
+├── market.py               # MarketScraper — full-table scrape → StockQuote[]
+├── market_db.py            # MarketRepository — SQLite (snapshot/history/rules/…)
+├── market_monitor.py       # Background engine: refresh + alerts + AI
+│
+├── config.py               # Configuration (.env / secrets / json / user settings)
+├── notifier.py             # Twilio WhatsApp messaging (no voice)
+├── ai_analyzer.py          # Anomaly detection (IsolationForest + z-score + rule)
+├── utils.py                # Trading hours, timezone, formatting helpers
+├── certs/                  # Bundled DSE intermediate CA (TLS chain fix)
 ├── requirements.txt
-├── .env.example           # Copy to .env and fill in
-├── config.json.example    # Copy to config.json (optional, non-secret tunables)
+├── .env.example            # Copy to .env and fill in
 └── README.md
 ```
+
+The legacy single-stock modules (`scraper.py`, `scheduler.py`,
+`database.py`) remain in the repo for reference but are not used by the V2
+entry point.
 
 ---
 
 ## 🚀 Quick Start (local)
 
 ```bash
-# 1. Clone / copy the project, then create a virtual environment
+# 1. Create a virtual environment
 python -m venv .venv
 # Windows:
 .venv\Scripts\activate
@@ -62,140 +90,120 @@ source .venv/bin/activate
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Configure
+# 3. (Optional) configure Twilio up front — or do it later in the UI
 copy .env.example .env            # Windows  (cp on macOS/Linux)
-copy config.json.example config.json
 # ...edit .env with your Twilio credentials and numbers
 
 # 4. Run
 streamlit run app.py
 ```
 
-Open <http://localhost:8501> and press **▶ Start Tracking**. Outside
-market hours, use **⚡ Collect Data Now** to test an instant collection.
+Open <http://localhost:8501>. The whole market loads on first paint. Add
+stocks from **Market Overview** or **My Dashboard**, then watch the live
+cards. Everything (Twilio credentials, refresh interval, selections,
+watchlists, alert rules) can be configured **inside the app** — no restart
+needed.
 
 ---
 
-## 📱 Twilio WhatsApp Setup Guide
+## 🧭 Using the Platform
 
-1. **Create a Twilio account** at <https://www.twilio.com/try-twilio> (free trial works).
-2. In the **Twilio Console**, copy your **Account SID** and **Auth Token**
-   (Dashboard → Account Info).
-3. Open **Messaging → Try it out → Send a WhatsApp message** to activate the
-   **WhatsApp Sandbox**. Twilio shows a sandbox number, usually
-   `+1 415 523 8886`, and a join code like `join <two-words>`.
-4. From **your own WhatsApp**, send `join <two-words>` to that sandbox
-   number. You'll receive a confirmation. (Sandbox joins expire after
-   72 hours of inactivity — just re-send the join message.)
-5. Fill in `.env`:
-   ```ini
-   TWILIO_ACCOUNT_SID=ACxxxxxxxx...
-   TWILIO_AUTH_TOKEN=xxxxxxxx...
-   TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
-   RECIPIENT_WHATSAPP_NUMBER=whatsapp:+8801XXXXXXXXX
-   ```
-   The `whatsapp:` prefix is added automatically if you omit it.
-6. Restart the app and click **"Send test WhatsApp message"** in the sidebar
-   to verify end-to-end delivery.
-7. **Production:** for unlimited messaging without the sandbox, request a
-   Twilio-approved WhatsApp sender (Messaging → Senders → WhatsApp senders)
-   and put that number in `TWILIO_WHATSAPP_NUMBER`.
+1. **Market Overview** — the landing page. See market breadth, top movers,
+   and browse/search every stock. Use **➕ Add stocks to your dashboard**.
+2. **My Dashboard** — your selected stocks as live cards. Search-and-add
+   more from the multi-select; click **View Details** on any card.
+3. **Stock Details** — full analytics + charts for any stock. **Track** a
+   stock here to start recording its history (charts fill in over a few
+   refresh cycles).
+4. **Watchlists** — save themed groups and load them onto the dashboard.
+5. **Alerts** — create price rules; matches fire a WhatsApp message.
+6. **Settings** — Twilio credentials, **test message**, refresh cadence,
+   and data status.
 
-Alert format sent by the app:
+Use the **sidebar** to Start/Stop live monitoring, set the refresh
+interval, and **⚡ Refresh now** (which collects a data point on demand,
+even while the market is closed).
+
+---
+
+## 📱 Twilio WhatsApp Setup
+
+You can enter everything directly in **Settings → WhatsApp Notifications**
+(saved on the device, survives restarts), or pre-fill `.env`:
+
+```ini
+TWILIO_ACCOUNT_SID=ACxxxxxxxx...
+TWILIO_AUTH_TOKEN=xxxxxxxx...
+TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+RECIPIENT_WHATSAPP_NUMBER=whatsapp:+8801XXXXXXXXX
+```
+
+1. Create a free Twilio account → copy **Account SID** + **Auth Token**.
+2. **Messaging → Try it out → Send a WhatsApp message** activates the
+   **Sandbox** (number usually `+1 415 523 8886`, join code `join <words>`).
+3. From the **recipient's** WhatsApp, send `join <words>` to the sandbox
+   number once.
+4. Enter the four values in **Settings**, then click **📨 Send test WhatsApp
+   message** to verify delivery end-to-end.
+5. **Production:** request a Twilio-approved WhatsApp sender for unlimited
+   messaging without the sandbox.
+
+Example alert:
 
 ```
-🔔 DSE Alert: OLYMPIC LTP = 144.2
-Condition: 143-145
-Time: 2026-06-10 11:42:00
-AI Note: Sudden spike (+2.40% in one interval)   ← only when detected
+📈 DSE Alert · OLYMPIC
+LTP: 145 BDT
+Change: +1.40%
+Triggered: LTP ≥ 145
+Time: 2026-06-16 11:42:00
 ```
 
 ---
 
-## ☁️ Streamlit Cloud Deployment
+## ⚙️ Configuration Keys
 
-1. Push this project to a **GitHub repository** (make sure `.env`,
-   `config.json`, `dse_monitor.db`, and `scrape_log.csv` are in `.gitignore`).
-2. Go to <https://share.streamlit.io> → **New app** → pick your repo,
-   branch, and `app.py`.
-3. In **App → Settings → Secrets**, paste your configuration as TOML:
-   ```toml
-   TWILIO_ACCOUNT_SID = "ACxxxxxxxx"
-   TWILIO_AUTH_TOKEN = "xxxxxxxx"
-   TWILIO_WHATSAPP_NUMBER = "whatsapp:+14155238886"
-   RECIPIENT_WHATSAPP_NUMBER = "whatsapp:+8801XXXXXXXXX"
-   TARGET_MIN_PRICE = "143"
-   TARGET_MAX_PRICE = "145"
-   AI_ENABLED = "true"
-   ```
-4. Deploy. The app reads `st.secrets` automatically (it takes precedence
-   over `.env` and `config.json`).
-
-**Notes for Streamlit Cloud**
-
-- The monitoring loop runs in a background thread inside the app process.
-  Streamlit Cloud puts idle apps to sleep, so for 24/7 unattended
-  monitoring keep the browser tab open, use an uptime pinger, or deploy to
-  an always-on host (Railway, Render, a VPS with
-  `streamlit run app.py --server.port 8501`).
-- SQLite/CSV files are ephemeral on Streamlit Cloud — logs reset on
-  redeploy. Use a VPS if you need durable history.
-- The headless-browser fallback is optional; the DSE page is static HTML,
-  so the default `requests` path works on Cloud without extra packages.
-
----
-
-## 🤖 Enable / Disable AI Analysis
-
-The AI module (IsolationForest + robust z-score + 2% spike/drop rule) is
-controlled by one flag:
-
-- **.env:** `AI_ENABLED=true` or `AI_ENABLED=false`
-- **config.json:** `"ai_enabled": true/false`
-- **Streamlit Cloud secrets:** `AI_ENABLED = "false"`
-
-Restart the app after changing it. Related tunables:
-
-| Key | Default | Meaning |
-|---|---|---|
-| `AI_SPIKE_THRESHOLD_PCT` | `2.0` | % move within one 2-min poll that triggers a spike/drop alert |
-| `AI_HISTORY_SIZE` | `20` | Rolling window of recent LTP values analysed |
-
-When an anomaly is detected, a **separate WhatsApp alert** is sent
-immediately — even if the price hasn't reached the target range.
-
----
-
-## ⚙️ All Configuration Keys
+Precedence: **Streamlit secrets → environment / .env → config.json →
+defaults**, with in-app changes (saved to `user_settings.json`) taking the
+highest precedence.
 
 | Key (env / json) | Default | Description |
 |---|---|---|
-| `TRADING_CODE` | `OLYMPIC` | DSE trading code to track |
-| `TARGET_MIN_PRICE` / `TARGET_MAX_PRICE` | `143` / `145` | Inclusive alert range (also editable live in the sidebar) |
-| `POLLING_INTERVAL_SECONDS` | `120` | Scrape frequency |
-| `TRADING_START` / `TRADING_END` | `10:00` / `14:30` | Full monitoring window incl. post-close (Asia/Dhaka) |
-| `TRADING_CONTINUOUS_END` | `14:20` | End of continuous trading (post-close runs until `TRADING_END`) |
+| `SCRAPE_URL` | dsebd latest-share-price | Whole-market source page |
+| `REFRESH_INTERVAL_SECONDS` | `60` | Market re-scrape cadence while open (min 30) |
+| `HISTORY_RETENTION_DAYS` | `30` | Auto-prune price history older than this |
+| `MARKET_DB_PATH` | `dse_market.db` | SQLite database location |
+| `REQUEST_TIMEOUT_SECONDS` | `25` | HTTP timeout per scrape |
+| `MAX_RETRIES_PER_SCRAPE` | `3` | Retries before a refresh is marked failed |
+| `TRADING_START` / `TRADING_END` | `10:00` / `14:30` | Monitoring window incl. post-close (Asia/Dhaka) |
+| `TRADING_CONTINUOUS_END` | `14:20` | End of continuous trading (display) |
 | `trading_days` (json only) | `[6,0,1,2,3]` | Sun–Thu (Mon=0 … Sun=6) |
-| `MAX_CONSECUTIVE_FAILURES` | `3` | Failures before error alert + auto-pause |
-| `REALERT_ON_SAME_PRICE` | `false` | Re-send alerts for an unchanged price |
-| `ALERT_COOLDOWN_SECONDS` | `600` | Minimum gap between target alerts |
 | `AI_ENABLED` | `true` | Toggle anomaly detection |
-
-Precedence: **Streamlit secrets → environment / .env → config.json → defaults**.
+| `TWILIO_*`, `RECIPIENT_WHATSAPP_NUMBER` | — | WhatsApp credentials (or set in-app) |
 
 ---
 
-## 🧪 Testing Without the Market
+## 🔐 TLS Note
 
-1. Press **⚡ Collect Data Now** — it scrapes instantly, even while the
-   market is closed, and runs the full alert pipeline.
-2. Widen the target range (e.g. `100 – 200`) in the sidebar to force a
-   target alert on the next collection.
-3. Use the sidebar **"Send test WhatsApp message"** button to verify Twilio
-   independently of scraping.
+`www.dsebd.org` omits its intermediate CA certificate from the TLS
+handshake. The app ships that intermediate (`certs/`) and appends it to
+certifi's trust store so certificate verification stays **fully enabled** —
+no `verify=False` anywhere.
+
+---
+
+## ⚡ Performance
+
+- One HTTP request refreshes the **entire** market (~396 stocks).
+- The latest snapshot is held in memory for instant card/table rendering.
+- **History is recorded only for tracked stocks** (selected + watchlisted +
+  alert-rule stocks) to keep the database lean.
+- Background thread + `st.cache_resource` singleton means scraping never
+  blocks the UI; cards/charts refresh via Streamlit fragments.
+
+---
 
 ## 🛡️ Disclaimer
 
-This tool is for personal informational use. It is not financial advice.
-Respect dsebd.org's terms of service; the default 2-minute polling interval
-is deliberately gentle.
+For personal informational use only — not financial advice. Respect
+dsebd.org's terms of service; the default refresh interval is deliberately
+gentle.

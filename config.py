@@ -103,10 +103,19 @@ class AppConfig:
 
     # --- Scraping ---
     scrape_url: str = "https://www.dsebd.org/latest_share_price_scroll_l.php"
-    polling_interval_seconds: int = 120          # every 2 minutes
+    polling_interval_seconds: int = 120          # every 2 minutes (legacy single-stock)
     request_timeout_seconds: int = 25
     max_retries_per_scrape: int = 3
     max_consecutive_failures: int = 3            # then alert + auto-pause
+
+    # --- Market-wide platform (V2) ---
+    # One scrape of the "latest share price" page returns the whole market
+    # (~396 stocks). The monitor refreshes the in-memory market cache on
+    # this cadence; history + alerts are recorded only for tracked stocks.
+    refresh_interval_seconds: int = 60
+    market_db_path: str = str(PROJECT_ROOT / "dse_market.db")
+    history_retention_days: int = 30             # prune older price history
+    max_cards: int = 60                          # safety cap on rendered cards
 
     # --- Trading hours (Asia/Dhaka) ---
     # DSE: Sun-Thu. Continuous trading 10:00-14:20, then a post-closing
@@ -186,6 +195,10 @@ def load_config() -> AppConfig:
         request_timeout_seconds=int(g("request_timeout_seconds", defaults.request_timeout_seconds)),
         max_retries_per_scrape=int(g("max_retries_per_scrape", defaults.max_retries_per_scrape)),
         max_consecutive_failures=int(g("max_consecutive_failures", defaults.max_consecutive_failures)),
+        refresh_interval_seconds=int(g("refresh_interval_seconds", defaults.refresh_interval_seconds)),
+        market_db_path=str(g("market_db_path", defaults.market_db_path)),
+        history_retention_days=int(g("history_retention_days", defaults.history_retention_days)),
+        max_cards=int(g("max_cards", defaults.max_cards)),
         timezone=str(g("timezone", defaults.timezone)),
         trading_days=tuple(json_cfg.get("trading_days", defaults.trading_days)),
         trading_start=str(g("trading_start", defaults.trading_start)),
@@ -217,6 +230,11 @@ def load_config() -> AppConfig:
     if overrides.get("polling_interval_seconds"):
         try:
             cfg.polling_interval_seconds = max(60, int(overrides["polling_interval_seconds"]))
+        except (TypeError, ValueError):
+            pass
+    if overrides.get("refresh_interval_seconds"):
+        try:
+            cfg.refresh_interval_seconds = max(30, int(overrides["refresh_interval_seconds"]))
         except (TypeError, ValueError):
             pass
 

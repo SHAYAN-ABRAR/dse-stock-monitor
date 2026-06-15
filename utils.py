@@ -116,3 +116,58 @@ def is_valid_whatsapp_number(number: str) -> bool:
     first digit is 1-9 (a country code can never start with 0).
     """
     return bool(re.fullmatch(r"\+[1-9]\d{7,14}", number))
+
+
+# ----------------------------------------------------------------------
+# Number / display formatting (used across the multi-stock UI)
+# ----------------------------------------------------------------------
+def fmt_compact(value: float | int | None) -> str:
+    """Human-friendly compact number: 1_507_887 -> '1.51M', 847324 -> '847.3K'."""
+    if value is None:
+        return "—"
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    sign = "-" if n < 0 else ""
+    n = abs(n)
+    if n >= 1_000_000_000:
+        return f"{sign}{n / 1_000_000_000:.2f}B"
+    if n >= 1_000_000:
+        return f"{sign}{n / 1_000_000:.2f}M"
+    if n >= 1_000:
+        return f"{sign}{n / 1_000:.1f}K"
+    if n == int(n):
+        return f"{sign}{int(n)}"
+    return f"{sign}{n:.2f}"
+
+
+def fmt_money(value: float | None, decimals: int = 2) -> str:
+    """Thousands-separated fixed-decimal money, e.g. 1234.5 -> '1,234.50'."""
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value):,.{decimals}f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def fmt_signed(value: float | None, decimals: int = 2) -> str:
+    """Always-signed number, e.g. +1.20 / -2.10 / 0.00."""
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value):+,.{decimals}f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def direction_of(change: float | None) -> str:
+    """Classify a price change as 'up' | 'down' | 'flat'."""
+    if change is None:
+        return "flat"
+    if change > 1e-9:
+        return "up"
+    if change < -1e-9:
+        return "flat" if abs(change) < 1e-9 else "down"
+    return "flat"

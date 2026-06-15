@@ -129,6 +129,24 @@ class PriceAnalyzer:
             return 0.0
         return 0.6745 * (price - median) / mad
 
+    def analyze_series(self, prices: List[float]) -> AnalysisResult:
+        """
+        Stateless analysis of an externally-owned price series (newest last).
+
+        Used by the multi-stock monitor, which keeps one rolling window per
+        tracked stock and feeds the recent slice here. Never raises.
+        """
+        try:
+            window = [float(p) for p in prices if p is not None]
+            if not window:
+                return AnalysisResult(note="No data", samples=0)
+            price = window[-1]
+            previous = window[-2] if len(window) >= 2 else None
+            return self._analyze(price, previous, window)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("analyze_series failed: %s", exc)
+            return AnalysisResult(note=f"AI error: {exc}")
+
     def _isolation_forest_flag(self, window: List[float]) -> bool:
         """True when IsolationForest marks the latest point as an outlier."""
         if not SKLEARN_AVAILABLE or len(window) < self.MIN_SAMPLES_FOR_MODEL:

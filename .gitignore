@@ -6,6 +6,9 @@ user_settings.json
 
 # Runtime data
 dse_monitor.db
+dse_market.db
+dse_market.db-wal
+dse_market.db-shm
 scrape_log.csv
 
 # Python

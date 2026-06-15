@@ -110,6 +110,27 @@ class WhatsAppNotifier:
         )
         return self.send(body)
 
+    def send_stock_alert(self, code: str, price: float, condition: str,
+                         timestamp: str, change_pct: Optional[float] = None,
+                         note: str = "") -> NotifyResult:
+        """
+        Generic per-stock price alert used by the multi-stock platform.
+
+        `condition` is a human-readable description of the rule that fired,
+        e.g. "LTP >= 145.00" or "LTP outside 143.00–145.00".
+        """
+        lines = [
+            f"\U0001F4C8 DSE Alert · {code}",
+            f"LTP: {price:g} BDT",
+        ]
+        if change_pct is not None:
+            lines.append(f"Change: {change_pct:+.2f}%")
+        lines.append(f"Triggered: {condition}")
+        lines.append(f"Time: {timestamp}")
+        if note:
+            lines.append(f"Note: {note}")
+        return self.send("\n".join(lines))
+
     def send_error_alert(self, error: str, timestamp: str) -> NotifyResult:
         """Alert: scraping failed repeatedly; monitoring auto-paused."""
         body = (
