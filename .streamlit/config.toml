@@ -1,0 +1,14 @@
+# Streamlit configuration for the DSE Terminal.
+#
+# Pinning the base theme stops Streamlit from following each visitor's
+# operating-system / browser colour scheme. Without this, a PC set to
+# "light" would render widget internals (dropdowns, popovers, inputs) in
+# light even while the site is dark — the mismatch we fixed. The app's
+# own dark/light toggle then layers its CSS on top of this stable base.
+[theme]
+base = "dark"
+primaryColor = "#7c3aed"
+backgroundColor = "#0b1322"
+secondaryBackgroundColor = "#0f1830"
+textColor = "#e8eefc"
+font = "sans serif"

@@ -75,7 +75,7 @@ if set(picked) != set(selected) and (picked or not selected):
         flash(f"+{len(changes) - 6} more changes", "ℹ️")
     st.rerun()
 
-CARDS_PER_ROW = 3
+CARDS_PER_ROW = 2
 
 top = st.columns([3, 1, 1])
 with top[1]:
@@ -121,6 +121,16 @@ if not selected:
     st.stop()
 
 
+def _save_band(code: str, lo: float, hi: float) -> None:
+    monitor.set_price_bounds(code, lo, hi)
+    flash(f"{code} band set {min(lo, hi):g}–{max(lo, hi):g} BDT", "🎯")
+
+
+def _clear_band(code: str) -> None:
+    monitor.clear_price_bounds(code)
+    flash(f"{code} band cleared", "🧹")
+
+
 @st.fragment(run_every="12s")
 def cards_grid() -> None:
     live = [monitor.get_quote(c) for c in monitor.get_selected()]
@@ -128,6 +138,9 @@ def cards_grid() -> None:
     detail_code, remove_code = render_cards(
         live, cols=CARDS_PER_ROW, key_prefix="dash",
         show_remove=True, ai_lookup=monitor.ai_result,
+        bounds_lookup=monitor.get_price_bounds,
+        hits_lookup=monitor.band_hits,
+        on_save_band=_save_band, on_clear_band=_clear_band,
     )
     if remove_code:
         st.session_state["_pending_remove"] = remove_code
@@ -135,8 +148,8 @@ def cards_grid() -> None:
     if detail_code:
         st.session_state["detail_code"] = detail_code
         st.switch_page("views/details.py")
-    st.caption("Cards auto-refresh every 12 seconds · click **View Details** "
-               "for full analytics & charts")
+    st.caption("Cards auto-refresh every 12 seconds · set a **🎯 LTP band** on "
+               "any card to track how often it trades in your range")
 
 
 cards_grid()

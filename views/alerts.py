@@ -10,6 +10,8 @@ cooldown prevents repeated alerts for the same condition.
 
 from __future__ import annotations
 
+from html import escape as html_escape
+
 import pandas as pd
 import streamlit as st
 
@@ -152,10 +154,27 @@ if hist.empty:
     st.caption("No alerts fired yet.")
 else:
     h = hist.copy()
-    h["sent"] = h["sent"].map({1: "✅ sent", 0: "❌ failed"})
     h["ts"] = pd.to_datetime(h["ts"]).dt.strftime("%Y-%m-%d %I:%M:%S %p")
-    h = h.rename(columns={"ts": "Time", "code": "Stock", "alert_type": "Type",
-                          "price": "LTP", "message": "Message", "sent": "Status",
-                          "error": "Error"})
-    st.dataframe(h, width="stretch", hide_index=True, height=340,
-                 column_config={"LTP": st.column_config.NumberColumn(format="%.2f")})
+    head = ('<thead><tr><th class="l">Time</th><th class="l">Stock</th>'
+            '<th class="l">Type</th><th>LTP</th><th class="l">Message</th>'
+            '<th class="l">Status</th><th class="l">Error</th></tr></thead>')
+    rows = []
+    for _, r in h.iterrows():
+        sent = bool(r["sent"])
+        status = ('<span class="up">✅ sent</span>' if sent
+                  else '<span class="down">❌ failed</span>')
+        ltp = r["price"]
+        ltp_s = "—" if pd.isna(ltp) else f"{ltp:,.2f}"
+        rows.append(
+            f'<tr><td class="l">{html_escape(str(r["ts"]))}</td>'
+            f'<td class="l code">{html_escape(str(r["code"]))}</td>'
+            f'<td class="l">{html_escape(str(r["alert_type"]))}</td>'
+            f'<td>{ltp_s}</td>'
+            f'<td class="l wrap">{html_escape(str(r["message"] or ""))}</td>'
+            f'<td class="l">{status}</td>'
+            f'<td class="l wrap">{html_escape(str(r["error"] or ""))}</td></tr>'
+        )
+    st.markdown(
+        f'<div class="dse-table-wrap" style="max-height:340px;">'
+        f'<table class="dse-table">{head}<tbody>{"".join(rows)}</tbody></table></div>',
+        unsafe_allow_html=True)

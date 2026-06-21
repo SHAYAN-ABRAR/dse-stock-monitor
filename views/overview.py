@@ -26,20 +26,62 @@ def _mover_rows(quotes, *, by, reverse, n=6):
     for q in quotes[:n]:
         pct = q.change_pct
         direction = q.direction
-        color = {"up": "#34d399", "down": "#f87171", "flat": "#93a9d4"}[direction]
+        color = {"up": "#10b981", "down": "#ef4444",
+                 "flat": "var(--text-muted)"}[direction]
         arrow = {"up": "▲", "down": "▼", "flat": "◆"}[direction]
         pct_str = f"{pct:+.2f}%" if pct is not None else "—"
         rows += (
             f'<div style="display:flex;justify-content:space-between;align-items:center;'
-            f'padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.06);">'
-            f'<div><span style="font-weight:700;color:#fff;">{q.code}</span>'
-            f'<span style="font-size:0.68rem;color:#7e93bb;margin-left:6px;">#{q.index}</span></div>'
+            f'padding:8px 10px;border-bottom:1px solid var(--border);">'
+            f'<div><span style="font-weight:700;color:var(--text-strong);">{q.code}</span>'
+            f'<span style="font-size:0.68rem;color:var(--text-faint);margin-left:6px;">#{q.index}</span></div>'
             f'<div style="text-align:right;">'
-            f'<span style="color:#dbe7ff;font-variant-numeric:tabular-nums;">{fmt_money(q.ltp)}</span>'
+            f'<span style="color:var(--text);font-variant-numeric:tabular-nums;">{fmt_money(q.ltp)}</span>'
             f'<span style="color:{color};font-weight:700;margin-left:10px;">{arrow} {pct_str}</span>'
             f'</div></div>'
         )
     return rows
+
+
+def _market_table_html(view: pd.DataFrame) -> str:
+    """Render the browse table as themed HTML (st.dataframe's canvas can't
+    follow the dark/light theme, so we build a real table instead)."""
+    def num(v, dec=2):
+        return "—" if pd.isna(v) else f"{v:,.{dec}f}"
+
+    def whole(v):
+        return "—" if pd.isna(v) else f"{int(v):,}"
+
+    rows = []
+    for _, r in view.iterrows():
+        chg, pct = r["Change"], r["Change %"]
+        cls = "flat"
+        if not pd.isna(chg):
+            cls = "up" if chg > 0 else "down" if chg < 0 else "flat"
+        chg_s = "—" if pd.isna(chg) else f"{chg:+,.2f}"
+        pct_s = "—" if pd.isna(pct) else f"{pct:+.2f}%"
+        rows.append(
+            f'<tr><td class="idx">{whole(r["#"])}</td>'
+            f'<td class="l code">{r["Code"]}</td>'
+            f'<td class="l sector">{r["Sector"]}</td>'
+            f'<td>{num(r["LTP"])}</td>'
+            f'<td class="{cls}">{chg_s}</td>'
+            f'<td class="{cls}">{pct_s}</td>'
+            f'<td>{whole(r["Volume"])}</td>'
+            f'<td>{num(r["Value (mn)"])}</td>'
+            f'<td>{whole(r["Trades"])}</td>'
+            f'<td>{num(r["High"])}</td>'
+            f'<td>{num(r["Low"])}</td></tr>'
+        )
+    head = (
+        '<thead><tr>'
+        '<th>#</th><th class="l">Code</th><th class="l">Sector</th>'
+        '<th>LTP</th><th>Change</th><th>Change %</th><th>Volume</th>'
+        '<th>Value (mn)</th><th>Trades</th><th>High</th><th>Low</th>'
+        '</tr></thead>'
+    )
+    return (f'<div class="dse-table-wrap"><table class="dse-table">{head}'
+            f'<tbody>{"".join(rows)}</tbody></table></div>')
 
 
 @st.fragment(run_every="15s")
@@ -147,20 +189,20 @@ if query.strip():
 if sector != "All sectors":
     view = view[view["Sector"] == sector]
 
+# ---- Sort controls (the themed HTML table below isn't click-sortable) ----
+s1, s2, _ = st.columns([2, 1, 2])
+sort_col = s1.selectbox(
+    "Sort by",
+    ["#", "Code", "Sector", "LTP", "Change", "Change %", "Volume",
+     "Value (mn)", "Trades", "High", "Low"],
+    key="ov_sort")
+descending = s2.selectbox("Order", ["Ascending", "Descending"],
+                          key="ov_sortdir") == "Descending"
+view = view.sort_values(by=sort_col, ascending=not descending,
+                        na_position="last")
+
 st.caption(f"Showing {len(view)} of {len(df)} instruments")
-st.dataframe(
-    view, width="stretch", hide_index=True, height=430,
-    column_config={
-        "#": st.column_config.NumberColumn(width="small"),
-        "LTP": st.column_config.NumberColumn(format="%.2f"),
-        "Change": st.column_config.NumberColumn(format="%.2f"),
-        "Change %": st.column_config.NumberColumn(format="%.2f%%"),
-        "Volume": st.column_config.NumberColumn(format="%d"),
-        "Value (mn)": st.column_config.NumberColumn(format="%.2f"),
-        "High": st.column_config.NumberColumn(format="%.2f"),
-        "Low": st.column_config.NumberColumn(format="%.2f"),
-    },
-)
+st.markdown(_market_table_html(view), unsafe_allow_html=True)
 
 # ---- Quick add to dashboard ----
 all_codes = [q.code for q in quotes]

@@ -36,7 +36,7 @@ def render_stock_detail(monitor, code: str) -> None:
     pct = q.change_pct
     pct_str = f"{pct:+.2f}%" if pct is not None else "—"
     arrow = {"up": "▲", "down": "▼", "flat": "◆"}[direction]
-    color = {"up": "#34d399", "down": "#f87171", "flat": "#60a5fa"}[direction]
+    color = {"up": "#10b981", "down": "#ef4444", "flat": "#3b82f6"}[direction]
 
     # ---- Header ----
     st.markdown(
@@ -45,13 +45,13 @@ def render_stock_detail(monitor, code: str) -> None:
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
             <div>
               <h1 style="font-size:1.9rem;">{q.code}
-                <span style="font-size:0.9rem;color:#a6bbe0;font-weight:600;">#{q.index} · {q.sector}</span>
+                <span style="font-size:0.9rem;color:var(--text-muted);font-weight:600;-webkit-text-fill-color:var(--text-muted);">#{q.index} · {q.sector}</span>
               </h1>
               <p style="margin-top:6px;">Dhaka Stock Exchange · live analytics</p>
             </div>
             <div style="text-align:right;">
-              <div style="font-size:2.4rem;font-weight:800;color:#fff;line-height:1;">
-                {fmt_money(q.ltp)} <span style="font-size:1rem;color:#93a9d4;">BDT</span></div>
+              <div style="font-size:2.4rem;font-weight:800;color:var(--text-strong);line-height:1;">
+                {fmt_money(q.ltp)} <span style="font-size:1rem;color:var(--text-muted);">BDT</span></div>
               <div style="font-size:1.05rem;font-weight:700;color:{color};margin-top:4px;">
                 {arrow} {fmt_signed(q.change)} · {pct_str}</div>
             </div>

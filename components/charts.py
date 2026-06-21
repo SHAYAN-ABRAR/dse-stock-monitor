@@ -15,12 +15,39 @@ from typing import Optional
 import pandas as pd
 import plotly.graph_objects as go
 
-_GRID = "rgba(255,255,255,0.06)"
-_FONT = "#9fb3d9"
 _UP = "#34d399"
 _DOWN = "#f87171"
 _BLUE = "#60a5fa"
 _VIOLET = "#c084fc"
+
+# Theme-dependent chart colours. ``apply_theme()`` (called from
+# runtime.inject_theme) swaps these so charts match the active dark/light UI.
+_CHART_THEMES = {
+    "dark": dict(font="#9fb3d9", grid="rgba(255,255,255,0.06)",
+                 hover_bg="#0f1830", hover_border="#2a3a5e",
+                 hover_text="#e8eefc", strong="#ffffff",
+                 track="rgba(255,255,255,0.18)"),
+    "light": dict(font="#5a6b8c", grid="rgba(20,40,80,0.10)",
+                  hover_bg="#ffffff", hover_border="#cdd8ec",
+                  hover_text="#15233f", strong="#0b1526",
+                  track="rgba(20,40,80,0.20)"),
+}
+_FONT = "#9fb3d9"
+_GRID = "rgba(255,255,255,0.06)"
+_HOVER_BG = "#0f1830"
+_HOVER_BORDER = "#2a3a5e"
+_HOVER_TEXT = "#e8eefc"
+_STRONG = "#ffffff"
+_TRACK = "rgba(255,255,255,0.18)"
+
+
+def apply_theme(theme: str = "dark") -> None:
+    """Switch chart colours to match the active UI theme (dark|light)."""
+    global _FONT, _GRID, _HOVER_BG, _HOVER_BORDER, _HOVER_TEXT, _STRONG, _TRACK
+    c = _CHART_THEMES.get(theme, _CHART_THEMES["dark"])
+    _FONT, _GRID = c["font"], c["grid"]
+    _HOVER_BG, _HOVER_BORDER, _HOVER_TEXT = c["hover_bg"], c["hover_border"], c["hover_text"]
+    _STRONG, _TRACK = c["strong"], c["track"]
 
 
 def _theme(fig: go.Figure, height: int = 320) -> go.Figure:
@@ -30,8 +57,8 @@ def _theme(fig: go.Figure, height: int = 320) -> go.Figure:
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=_FONT, family="Inter, sans-serif"),
-        hoverlabel=dict(bgcolor="#0f1830", bordercolor="#2a3a5e",
-                        font=dict(color="#e8eefc")),
+        hoverlabel=dict(bgcolor=_HOVER_BG, bordercolor=_HOVER_BORDER,
+                        font=dict(color=_HOVER_TEXT)),
         showlegend=False,
     )
     fig.update_xaxes(gridcolor=_GRID, zeroline=False, title=None)
@@ -135,7 +162,7 @@ def performance_gauge(change_pct: Optional[float]) -> go.Figure:
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=value,
-        number=dict(suffix="%", font=dict(size=30, color="#ffffff")),
+        number=dict(suffix="%", font=dict(size=30, color=_STRONG)),
         title=dict(text=label, font=dict(size=15, color=bar)),
         gauge=dict(
             axis=dict(range=[-5, 5], tickcolor=_FONT,
@@ -148,7 +175,7 @@ def performance_gauge(change_pct: Optional[float]) -> go.Figure:
                 dict(range=[-1.5, 1.5], color="rgba(96,165,250,0.14)"),
                 dict(range=[1.5, 5], color="rgba(52,211,153,0.18)"),
             ],
-            threshold=dict(line=dict(color="#ffffff", width=3),
+            threshold=dict(line=dict(color=_STRONG, width=3),
                            thickness=0.8, value=value),
         ),
     ))
@@ -167,15 +194,15 @@ def day_range_bar(low: Optional[float], high: Optional[float],
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=[low, high], y=[0, 0], mode="lines",
-        line=dict(color="rgba(255,255,255,0.18)", width=10),
+        line=dict(color=_TRACK, width=10),
         hoverinfo="skip",
     ))
     if ltp is not None:
         fig.add_trace(go.Scatter(
             x=[ltp], y=[0], mode="markers+text",
-            marker=dict(color=_VIOLET, size=18, line=dict(color="#fff", width=2)),
+            marker=dict(color=_VIOLET, size=18, line=dict(color=_STRONG, width=2)),
             text=[f"{ltp:g}"], textposition="top center",
-            textfont=dict(color="#fff", size=13), hoverinfo="skip",
+            textfont=dict(color=_STRONG, size=13), hoverinfo="skip",
         ))
     fig.add_annotation(x=low, y=0, text=f"L {low:g}", showarrow=False,
                        yshift=-22, font=dict(color=_DOWN, size=11))

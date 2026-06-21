@@ -16,15 +16,19 @@ from typing import Optional
 
 import streamlit as st
 
-from components import styles
+from components import charts, styles
 from config import AppConfig, load_config
 from market_monitor import MarketMonitor
 from utils import (fmt_hhmm_12, fmt_ts, is_trading_hours, now_dhaka,
                    parse_hhmm)
 
+# Available UI themes and the default used before a choice is persisted.
+THEMES = ("dark", "light")
+THEME_DEFAULT = "dark"
+
 # Bump when MarketMonitor / AppConfig gain or lose fields so a live server
 # rebuilds the cached singleton instead of serving a stale object.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 @st.cache_resource(show_spinner=False)
@@ -35,7 +39,10 @@ def _build_monitor(schema_version: int) -> MarketMonitor:
 def get_monitor() -> MarketMonitor:
     """Return the process-wide MarketMonitor (self-healing across upgrades)."""
     monitor = _build_monitor(SCHEMA_VERSION)
-    if not hasattr(monitor.cfg, "refresh_interval_seconds"):
+    # Rebuild if a hot-reload left us holding a monitor from an older code
+    # version (missing a cfg field or a newly added method).
+    if (not hasattr(monitor.cfg, "refresh_interval_seconds")
+            or not hasattr(monitor, "get_price_bounds")):
         _build_monitor.clear()
         monitor = _build_monitor(SCHEMA_VERSION)
     return monitor
@@ -44,8 +51,35 @@ def get_monitor() -> MarketMonitor:
 # ----------------------------------------------------------------------
 # Small HTML render helpers
 # ----------------------------------------------------------------------
-def inject_theme() -> None:
-    styles.inject()
+def inject_theme(theme: str = THEME_DEFAULT) -> None:
+    theme = theme if theme in THEMES else THEME_DEFAULT
+    styles.inject(theme)
+    charts.apply_theme(theme)
+
+
+# ----------------------------------------------------------------------
+# Theme preference (dark / light) — persisted per deployment in app_state
+# and cached in session_state for instant toggling.
+# ----------------------------------------------------------------------
+def get_theme(monitor: MarketMonitor) -> str:
+    """Return the active UI theme, seeding session_state from the DB once."""
+    if "ui_theme" not in st.session_state:
+        try:
+            stored = monitor.repo.get_state("ui_theme", THEME_DEFAULT)
+        except Exception:
+            stored = THEME_DEFAULT
+        st.session_state["ui_theme"] = stored if stored in THEMES else THEME_DEFAULT
+    theme = st.session_state.get("ui_theme", THEME_DEFAULT)
+    return theme if theme in THEMES else THEME_DEFAULT
+
+
+def set_theme(monitor: MarketMonitor, theme: str) -> None:
+    theme = theme if theme in THEMES else THEME_DEFAULT
+    st.session_state["ui_theme"] = theme
+    try:
+        monitor.repo.set_state("ui_theme", theme)
+    except Exception:
+        pass
 
 
 def pill(text: str, kind: str) -> str:
@@ -154,17 +188,26 @@ def confirm_action(message: str, detail: str = "", on_confirm=None,
 # ----------------------------------------------------------------------
 # Live clock (ticks client-side every second; counts down to open/close)
 # ----------------------------------------------------------------------
+# Per-theme colours for the clock iframe (it has its own document, so the
+# page's CSS variables don't reach it — we substitute colours directly).
+_CLOCK_COLORS = {
+    "dark": dict(bg="rgba(255,255,255,0.05)", border="rgba(255,255,255,0.11)",
+                 text="#ffffff", sub="#9fb3d9", count="#8ea4cc"),
+    "light": dict(bg="rgba(255,255,255,0.75)", border="rgba(20,40,80,0.13)",
+                  text="#0b1526", sub="#566b8c", count="#6a7da0"),
+}
+
 _CLOCK_HTML = """
 <div style="display:flex;flex-direction:column;align-items:center;gap:3px;
     font-family:'Inter','Segoe UI',system-ui,sans-serif;
-    background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.11);
+    background:__CLOCKBG__;border:1px solid __CLOCKBORDER__;
     border-radius:16px;padding:10px 18px;backdrop-filter:blur(14px);">
   <div style="display:flex;align-items:center;gap:14px;">
     <span id="liveclock" style="font-size:1.8rem;font-weight:800;letter-spacing:0.07em;
-        color:#fff;font-variant-numeric:tabular-nums;">--:--:--</span>
-    <span id="livedate" style="font-size:0.82rem;color:#9fb3d9;"></span>
+        color:__CLOCKTEXT__;font-variant-numeric:tabular-nums;">--:--:--</span>
+    <span id="livedate" style="font-size:0.82rem;color:__CLOCKSUB__;"></span>
   </div>
-  <span id="countdown" style="font-size:0.76rem;color:#8ea4cc;letter-spacing:0.04em;
+  <span id="countdown" style="font-size:0.76rem;color:__CLOCKCOUNT__;letter-spacing:0.04em;
         font-variant-numeric:tabular-nums;"></span>
 </div>
 <script>
@@ -203,12 +246,19 @@ _CLOCK_HTML = """
 def live_clock(cfg: AppConfig) -> None:
     start_t = parse_hhmm(cfg.trading_start)
     end_t = parse_hhmm(cfg.trading_end)
+    theme = st.session_state.get("ui_theme", THEME_DEFAULT)
+    colors = _CLOCK_COLORS.get(theme, _CLOCK_COLORS["dark"])
     st.iframe(
         _CLOCK_HTML
         .replace("__TZ__", cfg.timezone)
         .replace("__DAYS__", ",".join(str((d + 1) % 7) for d in sorted(cfg.trading_days)))
         .replace("__START_MIN__", str(start_t.hour * 60 + start_t.minute))
-        .replace("__END_MIN__", str(end_t.hour * 60 + end_t.minute)),
+        .replace("__END_MIN__", str(end_t.hour * 60 + end_t.minute))
+        .replace("__CLOCKBG__", colors["bg"])
+        .replace("__CLOCKBORDER__", colors["border"])
+        .replace("__CLOCKTEXT__", colors["text"])
+        .replace("__CLOCKSUB__", colors["sub"])
+        .replace("__CLOCKCOUNT__", colors["count"]),
         height=100,
     )
 
@@ -220,9 +270,27 @@ def render_sidebar(monitor: MarketMonitor) -> None:
     cfg = monitor.cfg
     snap = monitor.snapshot()
     with st.sidebar:
+        # The separating line above the brand is drawn as a CSS top-border on
+        # .sb-brand (light mode only) — no extra element, so no extra gap.
         st.markdown('<div class="sb-brand">📈 DSE Terminal</div>',
                     unsafe_allow_html=True)
         st.caption("Dhaka Stock Exchange · live monitoring platform")
+
+        # ---- Appearance: sun / moon sliding toggle switch ----
+        cur_theme = get_theme(monitor)
+        nxt_theme = "light" if cur_theme == "dark" else "dark"
+        mode_label = "🌙 Dark mode" if cur_theme == "dark" else "☀️ Light mode"
+        lab_col, sw_col = st.columns([1.5, 1])
+        lab_col.markdown(f'<div class="theme-label">{mode_label}</div>',
+                         unsafe_allow_html=True)
+        with sw_col:
+            # A fully-styled button acting as a switch; the knob side + icons
+            # are driven by CSS keyed on the theme in the button's key.
+            if st.button("Toggle theme", key=f"theme_toggle_{cur_theme}",
+                         help=f"Switch to {nxt_theme} mode"):
+                set_theme(monitor, nxt_theme)
+                st.rerun()
+
         st.divider()
 
         # ---- Live monitoring controls ----

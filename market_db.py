@@ -219,6 +219,41 @@ class MarketRepository:
         except sqlite3.Error:
             return 0
 
+    def count_band_hits(self, code: str, low: Optional[float],
+                        high: Optional[float],
+                        since: Optional[str] = None) -> int:
+        """How many times the recorded LTP *entered* the ``[low, high]`` band.
+
+        A "hit" is a transition from outside the band to inside it, so a
+        price that lingers inside the band still counts as a single hit.
+        This makes the number meaningful regardless of how often the market
+        is polled. Counts across the stock's whole recorded price history
+        (optionally only rows at/after ``since``).
+        """
+        if low is None or high is None:
+            return 0
+        lo, hi = (low, high) if low <= high else (high, low)
+        sql = "SELECT ltp FROM price_history WHERE code = ? AND ltp IS NOT NULL"
+        params: List[Any] = [code.upper()]
+        if since:
+            sql += " AND ts >= ?"
+            params.append(since)
+        sql += " ORDER BY id ASC"
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+        except sqlite3.Error as exc:
+            logger.error("count_band_hits failed: %s", exc)
+            return 0
+        hits = 0
+        prev_in = False
+        for (ltp,) in rows:
+            in_band = lo <= ltp <= hi
+            if in_band and not prev_in:
+                hits += 1
+            prev_in = in_band
+        return hits
+
     def prune_history(self, retention_days: int) -> None:
         cutoff = (datetime.now() - timedelta(days=retention_days)).strftime(
             "%Y-%m-%d %H:%M:%S"

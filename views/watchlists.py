@@ -111,15 +111,16 @@ else:
                 if q is None:
                     continue
                 d = q.direction
-                color = {"up": "#34d399", "down": "#f87171", "flat": "#93a9d4"}[d]
+                color = {"up": "#10b981", "down": "#ef4444",
+                         "flat": "var(--text-muted)"}[d]
                 pct = q.change_pct
                 pct_str = f"{pct:+.2f}%" if pct is not None else "—"
                 rows += (
                     f'<span style="display:inline-flex;gap:6px;align-items:center;'
-                    f'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.10);'
+                    f'background:var(--surface);border:1px solid var(--border);'
                     f'border-radius:999px;padding:4px 11px;margin:3px;">'
-                    f'<b style="color:#fff;">{c}</b>'
-                    f'<span style="color:#9fb3d9;">{fmt_money(q.ltp)}</span>'
+                    f'<b style="color:var(--text-strong);">{c}</b>'
+                    f'<span style="color:var(--text-muted);">{fmt_money(q.ltp)}</span>'
                     f'<span style="color:{color};font-weight:700;">{pct_str}</span></span>'
                 )
             st.markdown(f'<div style="margin-top:6px;">{rows}</div>',

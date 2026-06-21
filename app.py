@@ -24,14 +24,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from runtime import (get_monitor, inject_theme, render_flash,  # noqa: E402
-                     render_sidebar)
+from runtime import (get_monitor, get_theme, inject_theme,  # noqa: E402
+                     render_flash, render_sidebar)
 from utils import setup_logging  # noqa: E402
 
 setup_logging()
-inject_theme()
 
 monitor = get_monitor()
+inject_theme(get_theme(monitor))
 
 # First paint: make sure the market cache is populated so every view has
 # data to show. Cheap on subsequent runs (returns immediately when ready).

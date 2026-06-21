@@ -184,6 +184,40 @@ class MarketMonitor:
         return sorted(codes)
 
     # ==================================================================
+    # Per-stock LTP bands (dashboard card: price-band setter + hit counter)
+    # ==================================================================
+    def get_all_price_bounds(self) -> Dict[str, Dict[str, float]]:
+        raw = self.repo.get_state("price_bounds", {}) or {}
+        return raw if isinstance(raw, dict) else {}
+
+    def get_price_bounds(self, code: str) -> Optional[Dict[str, float]]:
+        """Return ``{"low", "high", "set_at"}`` for a stock, or None if unset."""
+        return self.get_all_price_bounds().get(code.upper())
+
+    def set_price_bounds(self, code: str, low: float, high: float) -> None:
+        """Save (and normalise) a stock's target price band."""
+        lo, hi = (low, high) if low <= high else (high, low)
+        bounds = self.get_all_price_bounds()
+        bounds[code.upper()] = {
+            "low": round(float(lo), 4),
+            "high": round(float(hi), 4),
+            "set_at": now_dhaka(self.cfg).strftime(DHAKA_FMT),
+        }
+        self.repo.set_state("price_bounds", bounds)
+        # Tracking the stock guarantees its price history keeps accumulating
+        # so the hit counter stays accurate going forward.
+        self.add_selected(code)
+
+    def clear_price_bounds(self, code: str) -> None:
+        bounds = self.get_all_price_bounds()
+        if bounds.pop(code.upper(), None) is not None:
+            self.repo.set_state("price_bounds", bounds)
+
+    def band_hits(self, code: str, low: float, high: float) -> int:
+        """How many times the recorded LTP has entered the [low, high] band."""
+        return self.repo.count_band_hits(code, low, high)
+
+    # ==================================================================
     # Control API
     # ==================================================================
     def start(self) -> None:
