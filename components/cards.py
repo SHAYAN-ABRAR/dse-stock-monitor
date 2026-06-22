@@ -194,8 +194,15 @@ def _render_band_setter(
 
     # Compact dropdown (popover): the card shows just this trigger; the
     # condition panel opens on click, so the card stays small.
+    #
+    # Streamlit has no API to close a popover programmatically, and a plain
+    # st.rerun() leaves it open. Rotating the popover key on save/clear mounts
+    # a fresh (closed) popover instead. The inner widgets keep their own stable
+    # keys, so the values the user just set still persist.
+    nonce_key = f"_bandpop_nonce_{key_prefix}_{code}"
+    nonce = st.session_state.get(nonce_key, 0)
     with st.popover(band_button_label(bounds), icon="🎯", width="stretch",
-                    key=f"bandpop_{key_prefix}_{code}"):
+                    key=f"bandpop_{key_prefix}_{code}_{nonce}"):
         st.markdown(
             '<div class="band-head"><span class="band-ico">🎯</span>'
             '<span>Track a price condition</span></div>',
@@ -244,12 +251,14 @@ def _render_band_setter(
                         key=f"{key_prefix}_bsave_{code}"):
             if on_save_band:
                 on_save_band(code, save_lo, save_hi, condition)
+            st.session_state[nonce_key] = nonce + 1  # re-mount popover closed
             st.rerun()
         if cb[1].button("✕", width="stretch", disabled=not bounds,
                         help="Clear this condition",
                         key=f"{key_prefix}_bclr_{code}"):
             if on_clear_band:
                 on_clear_band(code)
+            st.session_state[nonce_key] = nonce + 1  # re-mount popover closed
             st.rerun()
 
 
