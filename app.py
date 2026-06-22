@@ -41,9 +41,9 @@ if not monitor.market_ready():
 
 # ---- Multi-view navigation (modern st.navigation API) ----
 overview = st.Page("views/overview.py", title="Market Overview",
-                   icon=":material/dashboard:", default=True)
+                   icon=":material/dashboard:")
 dashboard = st.Page("views/dashboard.py", title="My Dashboard",
-                    icon=":material/grid_view:")
+                    icon=":material/grid_view:", default=True)
 details = st.Page("views/details.py", title="Stock Details",
                   icon=":material/insights:")
 watchlists = st.Page("views/watchlists.py", title="Watchlists",
@@ -53,7 +53,7 @@ alerts = st.Page("views/alerts.py", title="Alerts",
 settings = st.Page("views/settings.py", title="Settings",
                    icon=":material/settings:")
 
-nav = st.navigation([overview, dashboard, details, watchlists, alerts, settings])
+nav = st.navigation([dashboard, overview, details, watchlists, alerts, settings])
 
 # Shared chrome rendered under the navigation on every view.
 render_sidebar(monitor)

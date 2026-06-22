@@ -20,6 +20,58 @@ from utils import fmt_compact, fmt_money, fmt_signed
 
 _ARROW = {"up": "▲", "down": "▼", "flat": "◆"}
 
+# The four price conditions a card can track (mirrors the Alerts page).
+COND_OPTIONS = ["above", "below", "range", "outside"]
+COND_LABELS = {
+    "above": "LTP rises to / above",
+    "below": "LTP falls to / below",
+    "range": "LTP enters a band",
+    "outside": "LTP exits a band",
+}
+# Per-condition copy for the live "hit" counter beside the price.
+# title · chip when satisfied · chip when not · sub-line ({lo}/{hi} filled in).
+_HIT_META = {
+    "above":   ("Times hit", "● At / above", "○ Below",
+                "rose to / above <b>{lo:g}</b> BDT"),
+    "below":   ("Times hit", "● At / below", "○ Above",
+                "fell to / below <b>{hi:g}</b> BDT"),
+    "range":   ("Times in band", "● In band now", "○ Outside",
+                "entered your <b>{lo:g} – {hi:g}</b> BDT band"),
+    "outside": ("Times out", "● Outside now", "○ Inside",
+                "left your <b>{lo:g} – {hi:g}</b> BDT band"),
+}
+
+
+def condition_satisfied(condition: str, ltp: Optional[float],
+                        low: Optional[float], high: Optional[float]) -> Optional[bool]:
+    """Is the LTP currently satisfying the condition? None when unknown."""
+    if ltp is None:
+        return None
+    if condition == "above":
+        return low is not None and ltp >= low
+    if condition == "below":
+        return high is not None and ltp <= high
+    if condition == "outside":
+        return (low is not None and high is not None
+                and (ltp < low or ltp > high))
+    return low is not None and high is not None and low <= ltp <= high
+
+
+def band_button_label(bounds: Optional[dict]) -> str:
+    """Compact label for the card's price-condition popover trigger."""
+    if not bounds:
+        return "Set price condition"
+    cond = bounds.get("condition", "range")
+    lo, hi = bounds.get("low"), bounds.get("high")
+    if cond == "above" and lo is not None:
+        return f"LTP ≥ {lo:g} BDT"
+    if cond == "below" and hi is not None:
+        return f"LTP ≤ {hi:g} BDT"
+    if lo is not None and hi is not None:
+        return (f"Outside {lo:g}–{hi:g} BDT" if cond == "outside"
+                else f"Band {lo:g}–{hi:g} BDT")
+    return "Set price condition"
+
 
 def _price_step(ref: Optional[float]) -> float:
     """A sensible nudge step for a number input given the price scale."""
@@ -35,35 +87,43 @@ def _price_step(ref: Optional[float]) -> float:
 
 
 def hit_box_html(bounds: Optional[dict], hits: int,
-                 in_band_now: Optional[bool]) -> str:
-    """Display-only HTML for the 'times in band' counter beside the price."""
+                 satisfied_now: Optional[bool]) -> str:
+    """Display-only HTML for the live counter beside the price.
+
+    Adapts its title, chip and sub-line to the tracked condition
+    (``above``/``below``/``range``/``outside``).
+    """
     if not bounds:
         return (
             '<div class="hit-box hit-unset">'
             '<div class="hit-top"><span class="hit-icon">🎯</span>'
-            '<span class="hit-title">Times in band</span></div>'
+            '<span class="hit-title">Times hit</span></div>'
             '<div class="hit-count">—</div>'
-            '<div class="hit-sub">Set a band below to start counting</div>'
+            '<div class="hit-sub">Set a condition below to start counting</div>'
             '</div>'
         )
-    lo, hi = bounds["low"], bounds["high"]
-    if in_band_now is True:
+    cond = bounds.get("condition", "range")
+    title, chip_in, chip_out, sub_tpl = _HIT_META.get(cond, _HIT_META["range"])
+    lo = bounds.get("low") if bounds.get("low") is not None else 0.0
+    hi = bounds.get("high") if bounds.get("high") is not None else 0.0
+    if satisfied_now is True:
         state = "hit-in"
-        chip = '<span class="hit-chip chip-in">● In band now</span>'
-    elif in_band_now is False:
+        chip = f'<span class="hit-chip chip-in">{chip_in}</span>'
+    elif satisfied_now is False:
         state = "hit-out"
-        chip = '<span class="hit-chip chip-out">○ Outside</span>'
+        chip = f'<span class="hit-chip chip-out">{chip_out}</span>'
     else:
         state, chip = "hit-out", ""
+    sub = sub_tpl.format(lo=lo, hi=hi)
     return f"""
     <div class="hit-box {state}">
       <div class="hit-top">
         <span class="hit-icon">🎯</span>
-        <span class="hit-title">Times in band</span>
+        <span class="hit-title">{title}</span>
         {chip}
       </div>
       <div class="hit-count">{hits}</div>
-      <div class="hit-sub">entered your <b>{lo:g} – {hi:g}</b> BDT band</div>
+      <div class="hit-sub">{sub}</div>
     </div>
     """
 
@@ -119,41 +179,74 @@ def _render_band_setter(
     q: StockQuote, key_prefix: str, *, bounds: Optional[dict] = None,
     on_save_band=None, on_clear_band=None,
 ) -> None:
-    """Render the per-card LTP band setter (Low → High inputs + Save/Clear).
+    """Render the per-card price-condition setter (Condition + price inputs).
 
-    The 'times in band' counter is rendered separately, beside the price.
+    Supports the same four conditions as the Alerts page; the live counter is
+    rendered separately, beside the price.
     """
     code = q.code
     ref = q.ltp if q.ltp is not None else (q.close or q.ycp or 0.0)
     step = _price_step(ref)
-    def_lo = round(bounds["low"] if bounds else (ref or 1) * 0.95, 2)
-    def_hi = round(bounds["high"] if bounds else (ref or 1) * 1.05, 2)
+
+    saved_cond = bounds.get("condition", "range") if bounds else "above"
+    b_lo = bounds.get("low") if bounds else None
+    b_hi = bounds.get("high") if bounds else None
 
     # Compact dropdown (popover): the card shows just this trigger; the
-    # Low/High panel opens on click, so the card stays small.
-    label = (f"LTP band: {bounds['low']:g} – {bounds['high']:g} BDT"
-             if bounds else "Set LTP band")
-    with st.popover(label, icon="🎯", width="stretch",
+    # condition panel opens on click, so the card stays small.
+    with st.popover(band_button_label(bounds), icon="🎯", width="stretch",
                     key=f"bandpop_{key_prefix}_{code}"):
         st.markdown(
             '<div class="band-head"><span class="band-ico">🎯</span>'
-            '<span>Set your LTP band</span></div>',
+            '<span>Track a price condition</span></div>',
             unsafe_allow_html=True)
-        ci = st.columns(2, gap="small")
-        lo = ci[0].number_input(
-            "Low (BDT)", min_value=0.0, value=float(def_lo), step=step,
-            format="%.2f", key=f"{key_prefix}_blo_{code}")
-        hi = ci[1].number_input(
-            "High (BDT)", min_value=0.0, value=float(def_hi), step=step,
-            format="%.2f", key=f"{key_prefix}_bhi_{code}")
+
+        # A radio (not selectbox) so the choice is mouse-click only — a
+        # Streamlit selectbox is a searchable combobox you can type into.
+        condition = st.radio(
+            "Condition", options=COND_OPTIONS,
+            index=COND_OPTIONS.index(saved_cond),
+            format_func=lambda c: COND_LABELS[c],
+            key=f"{key_prefix}_bcond_{code}",
+        )
+
+        # Adaptive inputs: one threshold for above/below, a band otherwise.
+        if condition == "above":
+            val = st.number_input(
+                "Trigger when LTP ≥ (BDT)", min_value=0.0,
+                value=float(b_lo if b_lo is not None else (ref or 1)),
+                step=step, format="%.2f", key=f"{key_prefix}_bv_{code}")
+            save_lo, save_hi = val, val
+            st.caption("Counts each time LTP **rises to / above** your target.")
+        elif condition == "below":
+            val = st.number_input(
+                "Trigger when LTP ≤ (BDT)", min_value=0.0,
+                value=float(b_hi if b_hi is not None else (ref or 1)),
+                step=step, format="%.2f", key=f"{key_prefix}_bv_{code}")
+            save_lo, save_hi = val, val
+            st.caption("Counts each time LTP **falls to / below** your target.")
+        else:
+            ci = st.columns(2, gap="small")
+            save_lo = ci[0].number_input(
+                "Low (BDT)", min_value=0.0,
+                value=float(b_lo if b_lo is not None else (ref or 1) * 0.95),
+                step=step, format="%.2f", key=f"{key_prefix}_blo_{code}")
+            save_hi = ci[1].number_input(
+                "High (BDT)", min_value=0.0,
+                value=float(b_hi if b_hi is not None else (ref or 1) * 1.05),
+                step=step, format="%.2f", key=f"{key_prefix}_bhi_{code}")
+            st.caption(
+                "Counts each time LTP **enters** your band." if condition == "range"
+                else "Counts each time LTP **exits** your band.")
+
         cb = st.columns([3, 1], gap="small")
-        if cb[0].button("💾 Save band", type="primary", width="stretch",
+        if cb[0].button("💾 Save", type="primary", width="stretch",
                         key=f"{key_prefix}_bsave_{code}"):
             if on_save_band:
-                on_save_band(code, lo, hi)
+                on_save_band(code, save_lo, save_hi, condition)
             st.rerun()
         if cb[1].button("✕", width="stretch", disabled=not bounds,
-                        help="Clear this band",
+                        help="Clear this condition",
                         key=f"{key_prefix}_bclr_{code}"):
             if on_clear_band:
                 on_clear_band(code)
@@ -199,13 +292,14 @@ def render_cards(
                 hit_html = ""
                 if show_band:
                     hits = 0
-                    in_band_now: Optional[bool] = None
+                    satisfied_now: Optional[bool] = None
                     if bounds:
+                        cond = bounds.get("condition", "range")
+                        lo, hi = bounds.get("low"), bounds.get("high")
                         if hits_lookup:
-                            hits = hits_lookup(q.code, bounds["low"], bounds["high"])
-                        if q.ltp is not None:
-                            in_band_now = bounds["low"] <= q.ltp <= bounds["high"]
-                    hit_html = hit_box_html(bounds, hits, in_band_now)
+                            hits = hits_lookup(q.code, cond, lo, hi)
+                        satisfied_now = condition_satisfied(cond, q.ltp, lo, hi)
+                    hit_html = hit_box_html(bounds, hits, satisfied_now)
                 # The whole card is one real Streamlit container so the band
                 # setter (live widgets) sits INSIDE the card. Direction is
                 # encoded in the key to colour the accent rail.

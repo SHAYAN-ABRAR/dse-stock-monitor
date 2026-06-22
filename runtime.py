@@ -42,7 +42,7 @@ def get_monitor() -> MarketMonitor:
     # Rebuild if a hot-reload left us holding a monitor from an older code
     # version (missing a cfg field or a newly added method).
     if (not hasattr(monitor.cfg, "refresh_interval_seconds")
-            or not hasattr(monitor, "get_price_bounds")):
+            or not hasattr(monitor, "condition_hits")):
         _build_monitor.clear()
         monitor = _build_monitor(SCHEMA_VERSION)
     return monitor

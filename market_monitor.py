@@ -186,23 +186,43 @@ class MarketMonitor:
     # ==================================================================
     # Per-stock LTP bands (dashboard card: price-band setter + hit counter)
     # ==================================================================
-    def get_all_price_bounds(self) -> Dict[str, Dict[str, float]]:
+    def get_all_price_bounds(self) -> Dict[str, Dict[str, Any]]:
         raw = self.repo.get_state("price_bounds", {}) or {}
         return raw if isinstance(raw, dict) else {}
 
-    def get_price_bounds(self, code: str) -> Optional[Dict[str, float]]:
-        """Return ``{"low", "high", "set_at"}`` for a stock, or None if unset."""
+    def get_price_bounds(self, code: str) -> Optional[Dict[str, Any]]:
+        """Return ``{"condition", "low", "high", "set_at"}`` for a stock, or
+        None if unset. ``low``/``high`` may be None for single-threshold
+        conditions; a legacy entry without ``condition`` is treated as a band.
+        """
         return self.get_all_price_bounds().get(code.upper())
 
-    def set_price_bounds(self, code: str, low: float, high: float) -> None:
-        """Save (and normalise) a stock's target price band."""
-        lo, hi = (low, high) if low <= high else (high, low)
-        bounds = self.get_all_price_bounds()
-        bounds[code.upper()] = {
-            "low": round(float(lo), 4),
-            "high": round(float(hi), 4),
+    def set_price_bounds(self, code: str, low: float, high: float,
+                         condition: str = "range") -> None:
+        """Save a stock's price condition.
+
+        ``condition`` is one of ``above`` / ``below`` / ``range`` / ``outside``
+        (mirroring the alert rules). Single-threshold conditions store only the
+        bound they use (``above`` → ``low``; ``below`` → ``high``); band
+        conditions store a normalised ``low`` ≤ ``high`` pair.
+        """
+        entry: Dict[str, Any] = {
+            "condition": condition,
             "set_at": now_dhaka(self.cfg).strftime(DHAKA_FMT),
         }
+        if condition == "above":
+            entry["low"] = round(float(low), 4)
+            entry["high"] = None
+        elif condition == "below":
+            entry["low"] = None
+            entry["high"] = round(float(high), 4)
+        else:  # range / outside — keep a normalised band
+            lo, hi = (low, high) if low <= high else (high, low)
+            entry["low"] = round(float(lo), 4)
+            entry["high"] = round(float(hi), 4)
+
+        bounds = self.get_all_price_bounds()
+        bounds[code.upper()] = entry
         self.repo.set_state("price_bounds", bounds)
         # Tracking the stock guarantees its price history keeps accumulating
         # so the hit counter stays accurate going forward.
@@ -216,6 +236,11 @@ class MarketMonitor:
     def band_hits(self, code: str, low: float, high: float) -> int:
         """How many times the recorded LTP has entered the [low, high] band."""
         return self.repo.count_band_hits(code, low, high)
+
+    def condition_hits(self, code: str, condition: str,
+                       low: Optional[float], high: Optional[float]) -> int:
+        """How many times the recorded LTP has satisfied a price condition."""
+        return self.repo.count_condition_hits(code, condition, low, high)
 
     # ==================================================================
     # Control API

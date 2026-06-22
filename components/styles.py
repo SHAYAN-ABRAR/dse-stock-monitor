@@ -273,10 +273,22 @@ div[class*="st-key-bandpop_"] button:hover {
     text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.45rem;
 }
 .band-ico { font-size: 0.98rem; }
-[data-testid="stPopoverBody"] [data-testid="stNumberInput"] label {
+[data-testid="stPopoverBody"] [data-testid="stNumberInput"] label,
+[data-testid="stPopoverBody"] [data-testid="stRadio"] label {
     font-size: 0.72rem !important; color: var(--text-muted) !important; font-weight: 600 !important;
 }
 [data-testid="stPopoverBody"] input { font-weight: 700 !important; }
+/* Click-only condition picker: compact radio rows, no text entry */
+[data-testid="stPopoverBody"] [data-testid="stRadio"] { margin-bottom: 0.5rem; }
+[data-testid="stPopoverBody"] [data-testid="stRadio"] > label {
+    font-size: 0.72rem !important; letter-spacing: 0.06em; text-transform: uppercase;
+    font-weight: 800 !important; margin-bottom: 0.25rem;
+}
+[data-testid="stPopoverBody"] [data-testid="stRadio"] [role="radiogroup"] { gap: 0.1rem; }
+[data-testid="stPopoverBody"] [data-testid="stRadio"] [role="radiogroup"] label {
+    text-transform: none !important; letter-spacing: 0 !important; font-weight: 600 !important;
+    color: var(--text-strong) !important; padding: 0.1rem 0;
+}
 
 /* The 'times in band' counter (display-only HTML) */
 .sc-pricerow {

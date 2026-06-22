@@ -254,6 +254,49 @@ class MarketRepository:
             prev_in = in_band
         return hits
 
+    def count_condition_hits(self, code: str, condition: str,
+                             low: Optional[float], high: Optional[float],
+                             since: Optional[str] = None) -> int:
+        """How many times the recorded LTP *entered* the satisfied state for
+        a price condition (``above``/``below``/``range``/``outside``).
+
+        Like :meth:`count_band_hits`, a "hit" is a transition from unsatisfied
+        to satisfied, so a price that lingers in the satisfied zone still
+        counts once. Counts across the stock's whole recorded history
+        (optionally only rows at/after ``since``).
+        """
+        def satisfied(ltp: float) -> bool:
+            if condition == "above":
+                return low is not None and ltp >= low
+            if condition == "below":
+                return high is not None and ltp <= high
+            if condition == "outside":
+                return (low is not None and high is not None
+                        and (ltp < low or ltp > high))
+            # "range" (default): inside the band
+            return low is not None and high is not None and low <= ltp <= high
+
+        sql = "SELECT ltp FROM price_history WHERE code = ? AND ltp IS NOT NULL"
+        params: List[Any] = [code.upper()]
+        if since:
+            sql += " AND ts >= ?"
+            params.append(since)
+        sql += " ORDER BY id ASC"
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+        except sqlite3.Error as exc:
+            logger.error("count_condition_hits failed: %s", exc)
+            return 0
+        hits = 0
+        prev_in = False
+        for (ltp,) in rows:
+            now_in = satisfied(ltp)
+            if now_in and not prev_in:
+                hits += 1
+            prev_in = now_in
+        return hits
+
     def prune_history(self, retention_days: int) -> None:
         cutoff = (datetime.now() - timedelta(days=retention_days)).strftime(
             "%Y-%m-%d %H:%M:%S"

@@ -121,9 +121,15 @@ if not selected:
     st.stop()
 
 
-def _save_band(code: str, lo: float, hi: float) -> None:
-    monitor.set_price_bounds(code, lo, hi)
-    flash(f"{code} band set {min(lo, hi):g}–{max(lo, hi):g} BDT", "🎯")
+def _save_band(code: str, lo: float, hi: float, condition: str = "range") -> None:
+    monitor.set_price_bounds(code, lo, hi, condition)
+    desc = {
+        "above": f"LTP ≥ {lo:g}",
+        "below": f"LTP ≤ {hi:g}",
+        "range": f"band {min(lo, hi):g}–{max(lo, hi):g}",
+        "outside": f"outside {min(lo, hi):g}–{max(lo, hi):g}",
+    }.get(condition, f"{lo:g}–{hi:g}")
+    flash(f"{code} tracking {desc} BDT", "🎯")
 
 
 def _clear_band(code: str) -> None:
@@ -139,7 +145,7 @@ def cards_grid() -> None:
         live, cols=CARDS_PER_ROW, key_prefix="dash",
         show_remove=True, ai_lookup=monitor.ai_result,
         bounds_lookup=monitor.get_price_bounds,
-        hits_lookup=monitor.band_hits,
+        hits_lookup=monitor.condition_hits,
         on_save_band=_save_band, on_clear_band=_clear_band,
     )
     if remove_code:
@@ -148,8 +154,8 @@ def cards_grid() -> None:
     if detail_code:
         st.session_state["detail_code"] = detail_code
         st.switch_page("views/details.py")
-    st.caption("Cards auto-refresh every 12 seconds · set a **🎯 LTP band** on "
-               "any card to track how often it trades in your range")
+    st.caption("Cards auto-refresh every 12 seconds · set a **🎯 price "
+               "condition** on any card to track how often it triggers")
 
 
 cards_grid()
