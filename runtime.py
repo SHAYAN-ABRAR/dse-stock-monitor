@@ -17,6 +17,7 @@ from typing import Optional
 import streamlit as st
 
 from components import charts, styles
+from components.sound import SOUND_KEY, check_and_chime
 from config import AppConfig, load_config
 from market_monitor import MarketMonitor
 from utils import (fmt_hhmm_12, fmt_ts, is_trading_hours, now_dhaka,
@@ -264,6 +265,23 @@ def live_clock(cfg: AppConfig) -> None:
 
 
 # ----------------------------------------------------------------------
+# Price-condition alert chime — polls the monitor on its own timer (so it
+# fires on any page while the tab is open) and plays a sound on a trigger.
+# ----------------------------------------------------------------------
+def _persist_sound(monitor: MarketMonitor) -> None:
+    """Save the alert-sound mute preference so it survives reloads."""
+    try:
+        monitor.repo.set_state(SOUND_KEY, bool(st.session_state.get(SOUND_KEY, True)))
+    except Exception:
+        pass
+
+
+@st.fragment(run_every="8s")
+def _alert_watch() -> None:
+    check_and_chime(get_monitor())
+
+
+# ----------------------------------------------------------------------
 # Shared sidebar control panel (rendered once from app.py, under the nav)
 # ----------------------------------------------------------------------
 def render_sidebar(monitor: MarketMonitor) -> None:
@@ -314,6 +332,22 @@ def render_sidebar(monitor: MarketMonitor) -> None:
         mkt = pill("MARKET OPEN", "green") if open_now else pill("MARKET CLOSED", "amber")
         st.markdown(f"{status}&nbsp;&nbsp;{mkt}", unsafe_allow_html=True)
         st.caption(reason)
+
+        # ---- In-tab alert chime when a tracked condition triggers ----
+        if SOUND_KEY not in st.session_state:
+            try:
+                st.session_state[SOUND_KEY] = bool(
+                    monitor.repo.get_state(SOUND_KEY, True))
+            except Exception:
+                st.session_state[SOUND_KEY] = True
+        st.toggle(
+            "🔔 Alert sound", key=SOUND_KEY,
+            on_change=_persist_sound, args=(monitor,),
+            help="Play a chime in this browser tab whenever a tracked stock "
+                 "hits its price condition. Works on any page while the tab "
+                 "is open (the tab must have been clicked at least once).")
+        # Poll for triggers on its own timer so the chime fires anywhere.
+        _alert_watch()
 
         st.divider()
         # ---- Refresh cadence ----

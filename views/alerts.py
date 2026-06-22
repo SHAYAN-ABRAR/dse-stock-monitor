@@ -15,6 +15,7 @@ from html import escape as html_escape
 import pandas as pd
 import streamlit as st
 
+from components.sound import SOUND_KEY, play_chime
 from market_monitor import rule_condition_text, rule_matches
 from runtime import (confirm_action, flash, get_monitor, hero, pill,
                      request_confirm)
@@ -39,6 +40,25 @@ if not monitor.notifier.ready:
         'still trigger and be logged, but no message can be sent. Open '
         '<b>Settings</b> to add your Twilio credentials.</div>',
         unsafe_allow_html=True)
+
+# ======================================================================
+# Quick test of the in-tab alert chime
+# ======================================================================
+tcol = st.columns([1.4, 3])
+with tcol[0]:
+    if st.button("🔊 Test alert sound", width="stretch",
+                 help="Play the chime that sounds in this tab when a tracked "
+                      "stock hits its price condition."):
+        play_chime(reps=2, vol=0.85)
+        st.toast("Test chime played", icon="🔔")
+with tcol[1]:
+    if not st.session_state.get(SOUND_KEY, True):
+        st.caption("🔕 Live alert sound is currently **off** — turn on "
+                   "**🔔 Alert sound** in the sidebar to hear it on real hits.")
+    else:
+        st.caption("Plays the same chime you'll hear when a price condition "
+                   "triggers. Hear nothing? Click anywhere in the page first "
+                   "(browsers block audio until you interact).")
 
 # ======================================================================
 # Create an alert rule
