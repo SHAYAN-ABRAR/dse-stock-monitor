@@ -33,6 +33,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from config import AppConfig
+from utils import now_dhaka
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +284,10 @@ class MarketScraper:
             best_rows = max(tables, key=lambda t: len(t.find_all("tr"))).find_all("tr")
 
         quotes: List[StockQuote] = []
-        now = datetime.now()
+        # Asia/Dhaka wall-clock so the card "Updated …" stamp matches the
+        # live clock and the sidebar "last refresh" (which also use now_dhaka),
+        # even when the app runs on a non-Dhaka host (e.g. a UTC cloud server).
+        now = now_dhaka(self.cfg)
         seen: set[str] = set()
         for row in best_rows:
             cells = [c.get_text(strip=True) for c in row.find_all("td")]
