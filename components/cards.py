@@ -10,6 +10,7 @@ rendered as real Streamlit buttons beneath the HTML body.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 import streamlit as st
@@ -19,6 +20,33 @@ from market import StockQuote
 from utils import fmt_compact, fmt_money, fmt_signed
 
 _ARROW = {"up": "▲", "down": "▼", "flat": "◆"}
+
+
+def relative_age(captured_at: Optional[datetime]) -> str:
+    """Human 'time since' for a quote's capture time, e.g. 'just now' / '5m ago'.
+
+    Computed against *now* in the same timezone as ``captured_at`` (the scrape
+    stamps are Asia/Dhaka-aware). Because the card re-renders every few seconds,
+    this keeps ticking even between scrapes — so a quiet, market-closed gap
+    reads as a growing 'Xm ago' instead of a frozen timestamp.
+    """
+    if not isinstance(captured_at, datetime):
+        return ""
+    try:
+        ref = datetime.now(captured_at.tzinfo)
+        secs = (ref - captured_at).total_seconds()
+    except Exception:
+        return ""
+    secs = max(0.0, secs)
+    if secs < 10:
+        return "just now"
+    if secs < 60:
+        return f"{int(secs)}s ago"
+    if secs < 3600:
+        return f"{int(secs // 60)}m ago"
+    if secs < 86_400:
+        return f"{int(secs // 3600)}h ago"
+    return f"{int(secs // 86_400)}d ago"
 
 # The four price conditions a card can track (mirrors the Alerts page).
 COND_OPTIONS = ["above", "below", "range", "outside"]
@@ -144,6 +172,8 @@ def card_body_html(q: StockQuote, ai: Optional[AnalysisResult] = None,
     pct_str = f"{pct:+.2f}%" if pct is not None else "—"
     ltp = fmt_money(q.ltp) if q.ltp is not None else "—"
     updated = q.captured_at.strftime("%I:%M:%S %p").lstrip("0")
+    age = relative_age(q.captured_at)
+    age_part = f" · {age}" if age else ""
 
     ai_chip = ""
     if ai is not None and ai.is_anomaly:
@@ -170,7 +200,7 @@ def card_body_html(q: StockQuote, ai: Optional[AnalysisResult] = None,
         <div class="sc-stat"><div class="v">{fmt_compact(q.value_mn)}M</div><div class="k">Value</div></div>
         <div class="sc-stat"><div class="v">{fmt_compact(q.trades)}</div><div class="k">Trades</div></div>
       </div>
-      <div class="sc-foot"><span class="live-dot"></span> Updated {updated} {('· ' + ai_chip) if ai_chip else ''}</div>
+      <div class="sc-foot"><span class="live-dot"></span> Updated {updated}{age_part} {('· ' + ai_chip) if ai_chip else ''}</div>
     </div>
     """
 
