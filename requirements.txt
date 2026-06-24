@@ -6,6 +6,10 @@ certifi>=2024.2.2
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
 python-dotenv>=1.0.0
+# IANA timezone database so ZoneInfo("Asia/Dhaka") resolves on every host.
+# Windows and slim Linux images ship no system zoneinfo; without this the
+# tz lookup raises and the dashboard can't stamp quotes in Dhaka time.
+tzdata>=2024.1
 
 # Data & charts
 pandas>=2.0.0
