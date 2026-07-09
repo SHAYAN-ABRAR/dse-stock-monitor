@@ -75,7 +75,7 @@ if set(picked) != set(selected) and (picked or not selected):
         flash(f"+{len(changes) - 6} more changes", "ℹ️")
     st.rerun()
 
-CARDS_PER_ROW = 2
+CARDS_PER_ROW = 4
 
 top = st.columns([3, 1, 1])
 with top[1]:
@@ -121,20 +121,32 @@ if not selected:
     st.stop()
 
 
-def _save_band(code: str, lo: float, hi: float, condition: str = "range") -> None:
-    monitor.set_price_bounds(code, lo, hi, condition)
-    desc = {
-        "above": f"LTP ≥ {lo:g}",
-        "below": f"LTP ≤ {hi:g}",
-        "range": f"band {min(lo, hi):g}–{max(lo, hi):g}",
-        "outside": f"outside {min(lo, hi):g}–{max(lo, hi):g}",
-    }.get(condition, f"{lo:g}–{hi:g}")
-    flash(f"{code} tracking {desc} BDT", "🎯")
+def _save_band(code: str, entries: list) -> None:
+    """Persist the popover's full set of ticked conditions for a stock."""
+    monitor.set_price_conditions(code, entries)
+    if not entries:
+        flash(f"{code} conditions cleared", "🧹")
+        return
+    parts = []
+    for condition, lo, hi in entries:
+        parts.append({
+            "above": f"LTP ≥ {lo:g}",
+            "below": f"LTP ≤ {hi:g}",
+            "range": f"band {min(lo, hi):g}–{max(lo, hi):g}",
+            "outside": f"outside {min(lo, hi):g}–{max(lo, hi):g}",
+        }.get(condition, f"{lo:g}–{hi:g}"))
+    flash(f"{code} tracking {' · '.join(parts)} BDT", "🎯")
 
 
 def _clear_band(code: str) -> None:
     monitor.clear_price_bounds(code)
-    flash(f"{code} band cleared", "🧹")
+    flash(f"{code} conditions cleared", "🧹")
+
+
+def _toggle_bell(code: str, muted: bool) -> None:
+    monitor.set_bell_muted(code, muted)
+    flash(f"{code} notifications {'muted' if muted else 'on'}",
+          "🔕" if muted else "🔔")
 
 
 @st.fragment(run_every="12s")
@@ -144,9 +156,10 @@ def cards_grid() -> None:
     detail_code, remove_code = render_cards(
         live, cols=CARDS_PER_ROW, key_prefix="dash",
         show_remove=True, ai_lookup=monitor.ai_result,
-        bounds_lookup=monitor.get_price_bounds,
+        bounds_lookup=monitor.get_price_conditions,
         hits_lookup=monitor.condition_hits,
         on_save_band=_save_band, on_clear_band=_clear_band,
+        bell_muted_lookup=monitor.is_bell_muted, on_toggle_bell=_toggle_bell,
     )
     if remove_code:
         st.session_state["_pending_remove"] = remove_code

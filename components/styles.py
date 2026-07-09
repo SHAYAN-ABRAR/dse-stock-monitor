@@ -148,7 +148,7 @@ header[data-testid="stHeader"] { background: transparent; }
     position: relative; overflow: hidden;
     background: var(--hero-grad);
     border: 1px solid var(--border);
-    border-radius: 24px; padding: 1.5rem 2rem; margin-bottom: 1.3rem;
+    border-radius: 18px; padding: 0.85rem 1.4rem; margin-bottom: 1.0rem;
     backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
     box-shadow: 0 18px 50px var(--shadow-card);
 }
@@ -160,11 +160,11 @@ header[data-testid="stHeader"] { background: transparent; }
 }
 @keyframes shimmer { 0% { left: -60%; } 55%,100% { left: 130%; } }
 .hero h1 {
-    margin: 0; font-size: 1.85rem; font-weight: 800; letter-spacing: -0.01em;
+    margin: 0; font-size: 1.35rem; font-weight: 800; letter-spacing: -0.01em;
     background: var(--hero-title-grad);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
-.hero p { margin: 0.45rem 0 0 0; color: var(--text-muted); font-size: 0.95rem; }
+.hero p { margin: 0.2rem 0 0 0; color: var(--text-muted); font-size: 0.85rem; }
 
 /* ============================ Glass KPI cards ====================== */
 .glass-card {
@@ -205,13 +205,14 @@ header[data-testid="stHeader"] { background: transparent; }
 
 /* ============================ Stock cards ========================= */
 /* The dashboard card is a real Streamlit container (keyed st-key-card_*)
-   so the band setter + hit counter live INSIDE the card. */
+   so the band setter + hit counter live INSIDE the card. Sized compact so
+   FOUR cards fit per row without dropping information. */
 div[class*="st-key-card_"] {
     position: relative; overflow: hidden;
     background: var(--surface) !important;
     border: 1px solid var(--border) !important;
-    border-radius: 20px !important;
-    padding: 1.15rem 1.25rem 1.05rem 1.4rem !important;
+    border-radius: 16px !important;
+    padding: 0.8rem 0.9rem 0.7rem 1.05rem !important;
     backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
     box-shadow: 0 10px 30px var(--shadow-card);
     transition: box-shadow .28s ease, border-color .28s ease;
@@ -221,7 +222,7 @@ div[class*="st-key-card_"]:hover {
     box-shadow: 0 22px 54px var(--shadow-strong);
     border-color: var(--border-2);
 }
-div[class*="st-key-card_"] [data-testid="stVerticalBlock"] { gap: 0.7rem; }
+div[class*="st-key-card_"] [data-testid="stVerticalBlock"] { gap: 0.45rem; }
 div[class*="st-key-card_"]::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; z-index:2; }
 div[class*="st-key-card_up_"]::before   { background: linear-gradient(#34d399,#059669); }
 div[class*="st-key-card_down_"]::before { background: linear-gradient(#f87171,#b91c1c); }
@@ -229,28 +230,28 @@ div[class*="st-key-card_flat_"]::before { background: linear-gradient(#60a5fa,#3
 div[class*="st-key-card_up_"]:hover   { box-shadow: 0 22px 54px rgba(5,150,105,0.26); }
 div[class*="st-key-card_down_"]:hover { box-shadow: 0 22px 54px rgba(185,28,28,0.26); }
 
-.card-spacer { height: 18px; }
+.card-spacer { height: 12px; }
 @keyframes cardIn { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
 
 .sc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .sc-idx {
-    font-size: 0.68rem; color: var(--text-muted); font-weight: 700; letter-spacing: 0.08em;
+    font-size: 0.60rem; color: var(--text-muted); font-weight: 700; letter-spacing: 0.08em;
     background: var(--surface-2); border: 1px solid var(--border);
-    padding: 2px 8px; border-radius: 999px;
+    padding: 1px 7px; border-radius: 999px;
 }
-.sc-code { font-size: 1.28rem; font-weight: 800; color: var(--text-strong); margin: 4px 0 0 0; letter-spacing: 0.01em; }
-.sc-sector { font-size: 0.68rem; color: var(--text-faint); margin-top: 1px; text-transform: uppercase; letter-spacing: 0.06em; }
-.sc-ltp { font-size: 2.1rem; font-weight: 800; color: var(--text-strong); line-height: 1.0; margin: 0.55rem 0 0.2rem 0; font-variant-numeric: tabular-nums; transition: color .2s ease; }
-.sc-ltp small { font-size: 0.9rem; font-weight: 600; color: var(--text-muted); }
-.sc-change { display: inline-flex; align-items: center; gap: 6px; font-size: 0.92rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.sc-code { font-size: 1.05rem; font-weight: 800; color: var(--text-strong); margin: 2px 0 0 0; letter-spacing: 0.01em; }
+.sc-sector { font-size: 0.60rem; color: var(--text-faint); margin-top: 1px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+.sc-ltp { font-size: 1.55rem; font-weight: 800; color: var(--text-strong); line-height: 1.0; margin: 0; font-variant-numeric: tabular-nums; transition: color .2s ease; white-space: nowrap; }
+.sc-ltp small { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
+.sc-change { display: inline-flex; align-items: center; font-size: 0.70rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sc-change.dir-up   { color: #10b981; background: rgba(52,211,153,0.14); border: 1px solid rgba(52,211,153,0.34); }
 .sc-change.dir-down { color: #ef4444; background: rgba(248,113,113,0.14); border: 1px solid rgba(248,113,113,0.34); }
 .sc-change.dir-flat { color: #3b82f6; background: rgba(96,165,250,0.14); border: 1px solid rgba(96,165,250,0.32); }
-.sc-stats { display: flex; justify-content: space-between; gap: 6px; margin-top: 0.8rem; padding-top: 0.7rem; border-top: 1px solid var(--border); }
-.sc-stat { text-align: center; flex: 1; }
-.sc-stat .v { font-size: 0.98rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
-.sc-stat .k { font-size: 0.62rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
-.sc-foot { font-size: 0.66rem; color: var(--text-faint); margin-top: 0.6rem; display: flex; align-items: center; gap: 6px; }
+.sc-foot {
+    font-size: 0.62rem; color: var(--text-faint); margin-top: 0.45rem;
+    padding-top: 0.45rem; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 6px;
+}
 
 /* ============== Dashboard card: LTP band + hit counter ============ */
 /* The band setter is a compact popover (dropdown) trigger to save space. */
@@ -260,8 +261,40 @@ div[class*="st-key-bandpop_"] button {
     background: var(--band-btn-bg) !important;
     border: 1px solid var(--band-btn-border) !important;
     color: var(--band-btn-text) !important; font-weight: 700 !important;
-    border-radius: 12px !important; justify-content: center !important;
+    border-radius: 10px !important; justify-content: center !important;
+    padding: 0.28rem 0.6rem !important; min-height: 2rem !important;
 }
+div[class*="st-key-bandpop_"] button p { font-size: 0.8rem !important; }
+/* Compact in-card controls so four cards fit per row */
+div[class*="st-key-card_"] div.stButton button {
+    padding: 0.28rem 0.6rem; min-height: 2rem; border-radius: 10px;
+}
+div[class*="st-key-card_"] div.stButton button p { font-size: 0.82rem !important; }
+/* Emoji glyphs (🔔/✕/🎯) are drawn TALLER than their font-size line box, and
+   the button's inner markdown container clips overflow — which sliced the
+   bell in half. Let the glyphs overflow and give them room to breathe. */
+div[class*="st-key-card_"] div.stButton button [data-testid="stMarkdownContainer"],
+div[class*="st-key-card_"] div.stButton button p,
+div[class*="st-key-bandpop_"] button [data-testid="stMarkdownContainer"],
+div[class*="st-key-bandpop_"] button p {
+    overflow: visible !important; line-height: 1.35 !important;
+}
+/* Per-card notification bell (YouTube-style): amber when armed, dim when
+   muted. The label is a Material-symbol icon, so it sizes exactly. */
+div[class*="_bell_on_"] button, div[class*="_bell_off_"] button {
+    padding: 0.28rem 0.3rem;
+}
+div[class*="_bell_on_"] button [data-testid="stIconMaterial"],
+div[class*="_bell_off_"] button [data-testid="stIconMaterial"] {
+    font-size: 1.15rem; line-height: 1;
+}
+div[class*="_bell_on_"] button {
+    background: rgba(245,158,11,0.16) !important;
+    border: 1px solid rgba(245,158,11,0.50) !important;
+}
+div[class*="_bell_on_"] button [data-testid="stIconMaterial"] { color: #d97706 !important; }
+div[class*="_bell_on_"] button:hover { background: rgba(245,158,11,0.26) !important; }
+div[class*="_bell_off_"] button { opacity: 0.65; }
 div[class*="st-key-bandpop_"] button:hover {
     filter: brightness(1.08);
     border-color: var(--band-btn-border) !important;
@@ -273,61 +306,67 @@ div[class*="st-key-bandpop_"] button:hover {
     text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.45rem;
 }
 .band-ico { font-size: 0.98rem; }
-[data-testid="stPopoverBody"] [data-testid="stNumberInput"] label,
-[data-testid="stPopoverBody"] [data-testid="stRadio"] label {
+[data-testid="stPopoverBody"] [data-testid="stNumberInput"] label {
     font-size: 0.72rem !important; color: var(--text-muted) !important; font-weight: 600 !important;
 }
 [data-testid="stPopoverBody"] input { font-weight: 700 !important; }
-/* Click-only condition picker: compact radio rows, no text entry */
-[data-testid="stPopoverBody"] [data-testid="stRadio"] { margin-bottom: 0.5rem; }
-[data-testid="stPopoverBody"] [data-testid="stRadio"] > label {
-    font-size: 0.72rem !important; letter-spacing: 0.06em; text-transform: uppercase;
-    font-weight: 800 !important; margin-bottom: 0.25rem;
+/* Multi-condition picker: compact checkbox rows (one per condition).
+   The label text lives in a <p> INSIDE the label, and Streamlit paints it
+   directly with the pinned dark theme's near-white — colouring the label
+   alone can't reach it (a direct colour beats inheritance), so recolour
+   the descendants too or the words vanish on the light popover. */
+[data-testid="stPopoverBody"] [data-testid="stVerticalBlock"] { gap: 0.45rem; }
+[data-testid="stPopoverBody"] .stCheckbox label { padding: 0.05rem 0; }
+[data-testid="stPopoverBody"] .stCheckbox label p,
+[data-testid="stPopoverBody"] .stCheckbox label * {
+    color: var(--text-strong) !important;
 }
-[data-testid="stPopoverBody"] [data-testid="stRadio"] [role="radiogroup"] { gap: 0.1rem; }
-[data-testid="stPopoverBody"] [data-testid="stRadio"] [role="radiogroup"] label {
-    text-transform: none !important; letter-spacing: 0 !important; font-weight: 600 !important;
-    color: var(--text-strong) !important; padding: 0.1rem 0;
+[data-testid="stPopoverBody"] .stCheckbox label p {
+    font-size: 0.82rem !important; font-weight: 600 !important;
 }
 
-/* The 'times in band' counter (display-only HTML) */
+/* Price row: LTP left, change pill right — always one line each */
 .sc-pricerow {
-    display: flex; align-items: stretch; justify-content: space-between;
-    gap: 12px; margin: 0.5rem 0 0.15rem 0;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin: 0.4rem 0 0.15rem 0;
 }
-.sc-priceblock {
-    display: flex; flex-direction: column; justify-content: center; gap: 7px; min-width: 0;
-}
-.sc-priceblock .sc-ltp { margin: 0; }
-.sc-pricerow .hit-box { margin: 0; flex: 0 0 47%; }
+/* The 'times hit' counter: a full-width strip under the price made of two
+   fixed single-line rows (title + state chip, then count + condition), so
+   nothing ever wraps or clips and every card keeps the same height. */
 .hit-box {
-    position: relative; overflow: hidden;
-    border-radius: 14px; padding: 0.6rem 0.75rem;
+    position: relative;
+    border-radius: 12px; padding: 0.45rem 0.6rem; margin-top: 0.25rem;
     background: var(--surface-inset);
     border: 1px solid var(--border);
     transition: border-color .25s ease, box-shadow .25s ease;
 }
-.hit-box .hit-top { display: flex; align-items: center; gap: 7px; }
-.hit-box .hit-icon { font-size: 0.95rem; }
+.hit-box .hit-top { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.hit-box .hit-icon { font-size: 0.85rem; }
 .hit-box .hit-title {
-    font-size: 0.70rem; font-weight: 800; letter-spacing: 0.10em;
-    text-transform: uppercase; color: var(--text-muted);
+    font-size: 0.60rem; font-weight: 800; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-muted); white-space: nowrap;
 }
 .hit-box .hit-chip {
-    margin-left: auto; font-size: 0.60rem; font-weight: 800;
-    letter-spacing: 0.03em; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+    margin-left: auto; flex: 0 0 auto; font-size: 0.56rem; font-weight: 800;
+    letter-spacing: 0.03em; padding: 1px 8px; border-radius: 999px; white-space: nowrap;
 }
+.hit-box .hit-row { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; min-width: 0; }
+.hit-box .hit-row + .hit-row { margin-top: 4px; }
 .hit-box .chip-in { color: #10b981; background: rgba(52,211,153,0.16); border: 1px solid rgba(52,211,153,0.40); }
 .hit-box .chip-out { color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--border); }
 .hit-box .hit-count {
-    font-size: 1.85rem; font-weight: 900; line-height: 1.05; margin-top: 0.1rem;
+    font-size: 1.3rem; font-weight: 900; line-height: 1.0;
     font-variant-numeric: tabular-nums;
     background: linear-gradient(90deg, #3b82f6, #8b5cf6);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
-.hit-box .hit-sub { font-size: 0.66rem; color: var(--text-muted); margin-top: 1px; }
+.hit-box .hit-sub {
+    font-size: 0.62rem; color: var(--text-muted); min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .hit-box.hit-in { border-color: rgba(52,211,153,0.45); box-shadow: 0 0 18px rgba(52,211,153,0.16); }
-.hit-box.hit-in .hit-count {
+/* green count only on the row(s) whose condition is satisfied right now */
+.hit-box .hit-row.row-in .hit-count {
     background: linear-gradient(90deg, #10b981, #059669);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
@@ -378,6 +417,11 @@ div.stButton button, div.stDownloadButton button {
 div.stButton button:hover { transform: translateY(-2px); border-color: var(--border-2); background: var(--surface-2); }
 div.stButton button[kind="primary"] { background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; border: none; box-shadow: 0 6px 20px rgba(79,70,229,0.35); }
 div.stButton button[kind="primary"]:hover { filter: brightness(1.1); box-shadow: 0 10px 28px rgba(79,70,229,0.5); }
+/* The button caption is a nested <p>, and broad text rules (the sidebar's
+   `p`, the dialog's `*`) colour that <p> DIRECTLY — beating the white the
+   button would hand down by inheritance. On gradient buttons that meant
+   dark-on-purple text in light mode, so force every descendant white. */
+div.stButton button[kind="primary"] *, div.stDownloadButton button[kind="primary"] * { color: #fff !important; }
 div.stButton button:disabled { background: var(--surface) !important; color: var(--text-faint) !important; border: 1px solid var(--border) !important; cursor: not-allowed; transform: none !important; }
 
 /* high-visibility refresh button */
@@ -387,6 +431,7 @@ div.stButton button:disabled { background: var(--surface) !important; color: var
     box-shadow: 0 0 16px rgba(220,38,38,0.4);
 }
 .st-key-btn_refresh button:hover { filter: brightness(1.12); box-shadow: 0 0 26px rgba(220,38,38,0.65); }
+.st-key-btn_refresh button * { color: #fff !important; }
 
 /* ============================ Inputs ============================= */
 [data-testid="InputInstructions"] { display: none !important; }
@@ -400,8 +445,11 @@ div[data-baseweb="select"] > div, div[data-baseweb="input"], div[data-baseweb="b
 }
 .stTextInput input, .stNumberInput input, .stTextArea textarea { color: var(--input-text) !important; }
 div[data-baseweb="select"] *, div[data-baseweb="input"] * { color: var(--input-text) !important; }
-.stMultiSelect div[data-baseweb="tag"] { background: linear-gradient(135deg,#2563eb,#7c3aed) !important; border: none !important; color:#fff !important; }
-.stMultiSelect div[data-baseweb="tag"] * { color:#fff !important; }
+/* Multiselect tags: match on the attribute alone — newer Streamlit renders
+   the tag as a <span>, not a <div>, and a div-only selector silently stops
+   applying (leaving primary-purple tags with the input's dark text). */
+.stMultiSelect [data-baseweb="tag"], [data-testid="stMultiSelect"] [data-baseweb="tag"] { background: linear-gradient(135deg,#2563eb,#7c3aed) !important; border: none !important; color:#fff !important; }
+.stMultiSelect [data-baseweb="tag"] *, [data-testid="stMultiSelect"] [data-baseweb="tag"] * { color:#fff !important; fill:#fff !important; }
 /* placeholder + value text */
 input::placeholder, textarea::placeholder { color: var(--text-faint) !important; }
 
@@ -476,6 +524,14 @@ div[role="dialog"], [data-testid="stDialog"] > div,
 /* widget labels + captions follow the theme */
 [data-testid="stWidgetLabel"] label, [data-testid="stWidgetLabel"] p,
 label[data-testid="stWidgetLabel"], .stCheckbox label, .stRadio label, .stToggle label {
+    color: var(--text) !important;
+}
+/* Radio/checkbox/toggle OPTION text: Streamlit colours the inner text node
+   directly (pinned dark theme's near-white), so the label rules above never
+   reach it — recolour the descendants or the words vanish in light mode.
+   The popover-scoped rule (higher specificity) still wins inside popovers. */
+[data-testid="stRadio"] [role="radiogroup"] label *,
+.stCheckbox label p, .stToggle label p {
     color: var(--text) !important;
 }
 [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * { color: var(--text-muted) !important; }

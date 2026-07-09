@@ -23,7 +23,7 @@ import logging
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ai_analyzer import AnalysisResult, PriceAnalyzer
 from config import AppConfig, save_user_setting
@@ -33,6 +33,9 @@ from notifier import WhatsAppNotifier
 from utils import DHAKA_FMT, is_trading_hours, now_dhaka
 
 logger = logging.getLogger(__name__)
+
+# Canonical display order for a stock's tracked price conditions.
+_COND_ORDER = {"above": 0, "below": 1, "range": 2, "outside": 3}
 
 
 # ----------------------------------------------------------------------
@@ -184,54 +187,94 @@ class MarketMonitor:
         return sorted(codes)
 
     # ==================================================================
-    # Per-stock LTP bands (dashboard card: price-band setter + hit counter)
+    # Per-stock LTP conditions (dashboard card: condition setter + counters)
     # ==================================================================
-    def get_all_price_bounds(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_price_bounds(self) -> Dict[str, Any]:
         raw = self.repo.get_state("price_bounds", {}) or {}
         return raw if isinstance(raw, dict) else {}
 
-    def get_price_bounds(self, code: str) -> Optional[Dict[str, Any]]:
-        """Return ``{"condition", "low", "high", "set_at"}`` for a stock, or
-        None if unset. ``low``/``high`` may be None for single-threshold
-        conditions; a legacy entry without ``condition`` is treated as a band.
-        """
-        return self.get_all_price_bounds().get(code.upper())
+    def get_price_conditions(self, code: str) -> List[Dict[str, Any]]:
+        """Return every tracked price condition for a stock (possibly none).
 
-    def set_price_bounds(self, code: str, low: float, high: float,
-                         condition: str = "range") -> None:
-        """Save a stock's price condition.
-
-        ``condition`` is one of ``above`` / ``below`` / ``range`` / ``outside``
-        (mirroring the alert rules). Single-threshold conditions store only the
-        bound they use (``above`` → ``low``; ``below`` → ``high``); band
-        conditions store a normalised ``low`` ≤ ``high`` pair.
+        Each entry is ``{"condition", "low", "high", "set_at"}`` with
+        ``low``/``high`` possibly None for single-threshold conditions.
+        A legacy pre-multi-condition value (a single dict) is served as a
+        one-item list. Entries come back in canonical above → below →
+        range → outside order for stable display.
         """
-        entry: Dict[str, Any] = {
-            "condition": condition,
-            "set_at": now_dhaka(self.cfg).strftime(DHAKA_FMT),
-        }
-        if condition == "above":
-            entry["low"] = round(float(low), 4)
-            entry["high"] = None
-        elif condition == "below":
-            entry["low"] = None
-            entry["high"] = round(float(high), 4)
-        else:  # range / outside — keep a normalised band
-            lo, hi = (low, high) if low <= high else (high, low)
-            entry["low"] = round(float(lo), 4)
-            entry["high"] = round(float(hi), 4)
+        raw = self.get_all_price_bounds().get(code.upper())
+        if not raw:
+            return []
+        entries = raw if isinstance(raw, list) else [raw]
+        return sorted(
+            (e for e in entries if isinstance(e, dict)),
+            key=lambda e: _COND_ORDER.get(e.get("condition", "range"), 9),
+        )
+
+    def set_price_conditions(
+        self, code: str,
+        entries: List[Tuple[str, Optional[float], Optional[float]]],
+    ) -> None:
+        """Replace a stock's full set of tracked price conditions.
+
+        ``entries`` holds ``(condition, low, high)`` tuples — one per tracked
+        condition (``above``/``below``/``range``/``outside``, mirroring the
+        alert rules; duplicates of a condition are ignored). Single-threshold
+        conditions store only the bound they use (``above`` → ``low``;
+        ``below`` → ``high``); band conditions store a normalised
+        ``low`` ≤ ``high`` pair. An empty list clears the stock entirely.
+        """
+        ts = now_dhaka(self.cfg).strftime(DHAKA_FMT)
+        saved: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for condition, low, high in entries:
+            if condition in seen:
+                continue
+            seen.add(condition)
+            entry: Dict[str, Any] = {"condition": condition, "set_at": ts}
+            if condition == "above":
+                entry["low"], entry["high"] = round(float(low), 4), None
+            elif condition == "below":
+                entry["low"], entry["high"] = None, round(float(high), 4)
+            else:  # range / outside — keep a normalised band
+                lo, hi = (low, high) if low <= high else (high, low)
+                entry["low"], entry["high"] = round(float(lo), 4), round(float(hi), 4)
+            saved.append(entry)
 
         bounds = self.get_all_price_bounds()
-        bounds[code.upper()] = entry
-        self.repo.set_state("price_bounds", bounds)
-        # Tracking the stock guarantees its price history keeps accumulating
-        # so the hit counter stays accurate going forward.
-        self.add_selected(code)
+        if saved:
+            bounds[code.upper()] = saved
+            self.repo.set_state("price_bounds", bounds)
+            # Tracking the stock guarantees its price history keeps
+            # accumulating so the hit counters stay accurate going forward.
+            self.add_selected(code)
+        elif bounds.pop(code.upper(), None) is not None:
+            self.repo.set_state("price_bounds", bounds)
 
     def clear_price_bounds(self, code: str) -> None:
         bounds = self.get_all_price_bounds()
         if bounds.pop(code.upper(), None) is not None:
             self.repo.set_state("price_bounds", bounds)
+
+    # ==================================================================
+    # Per-stock notification bells (YouTube-style 🔔 on each card).
+    # A bell is ON by default; muting a stock silences its chime, toast
+    # and tab flash without touching its conditions or hit counters.
+    # ==================================================================
+    def get_bell_muted_codes(self) -> List[str]:
+        raw = self.repo.get_state("bell_muted_codes", []) or []
+        return [str(c).upper() for c in raw] if isinstance(raw, list) else []
+
+    def is_bell_muted(self, code: str) -> bool:
+        return code.upper() in self.get_bell_muted_codes()
+
+    def set_bell_muted(self, code: str, muted: bool) -> None:
+        cur = set(self.get_bell_muted_codes())
+        if muted:
+            cur.add(code.upper())
+        else:
+            cur.discard(code.upper())
+        self.repo.set_state("bell_muted_codes", sorted(cur))
 
     def band_hits(self, code: str, low: float, high: float) -> int:
         """How many times the recorded LTP has entered the [low, high] band."""

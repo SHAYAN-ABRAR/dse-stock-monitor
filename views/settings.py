@@ -2,7 +2,8 @@
 views/settings.py
 -----------------
 Settings — WhatsApp (Twilio) notification setup, a one-click test
-message, refresh cadence, and platform / data status.
+message, in-tab alert tests (chime + tab flash), refresh cadence,
+and platform / data status.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import re
 
 import streamlit as st
 
+from components.sound import flash_tab, play_chime
 from runtime import flash, get_monitor, hero
 from utils import (fmt_hhmm_12, is_valid_whatsapp_number,
                    normalize_whatsapp_number, now_dhaka)
@@ -100,6 +102,36 @@ with st.container(border=True):
                 st.error(f"Failed: {res.error}")
     else:
         st.warning("WhatsApp not yet configured — alerts are disabled.", icon="⚠️")
+
+# ======================================================================
+# In-tab alert notifications (chime + tab flash)
+# ======================================================================
+st.markdown('<div class="section-title">🔔 In-Tab Alert Notifications</div>',
+            unsafe_allow_html=True)
+
+with st.container(border=True):
+    st.caption(
+        "Every dashboard card has a **🔔 bell** — while it's armed, a "
+        "price-condition hit plays a chime in this tab **and** flashes the "
+        "browser tab's title + icon, so you notice it even from another tab "
+        "or with your PC muted. Test both signals here any time.")
+    t1, t2 = st.columns(2)
+    with t1:
+        if st.button("🔊 Test alert sound", width="stretch",
+                     help="Play the chime that sounds when a tracked stock "
+                          "hits its price condition."):
+            play_chime(reps=2, vol=0.85)
+            st.toast("Test chime played", icon="🔔")
+    with t2:
+        if st.button("💡 Test tab flash", width="stretch",
+                     help="Flashes this browser tab's title and icon for "
+                          "~15 seconds — switch to another tab to see how a "
+                          "real hit looks from the outside."):
+            flash_tab("🔔 TEST — price target hit!", secs=15)
+            st.toast("Tab is flashing — switch to another tab to watch it. "
+                     "It stops when you come back or click.", icon="💡")
+    st.caption("Hear nothing? Click anywhere in the page first — "
+               "browsers block audio until you interact.")
 
 # ======================================================================
 # Platform settings + status
