@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from components.cards import render_cards
+from components.cards import card_display_name, render_cards
 from runtime import (confirm_action, flash, get_monitor, hero, pill,
                      request_confirm)
 
@@ -87,8 +87,11 @@ with top[2]:
         flash("Prices refreshed", "⚡")
         st.rerun()
 
+_copies_map = monitor.get_card_copies()
+_n_cards = len(selected) + sum(len(_copies_map.get(c, [])) for c in selected)
 st.markdown(
-    f'{pill(f"{len(selected)} STOCKS TRACKED", "violet")}',
+    pill(f"{len(selected)} STOCKS · {_n_cards} CARDS" if _n_cards != len(selected)
+         else f"{len(selected)} STOCKS TRACKED", "violet"),
     unsafe_allow_html=True,
 )
 
@@ -97,8 +100,9 @@ st.markdown(
 if pending := st.session_state.get("_pending_remove"):
     confirm_action(
         f"Remove {pending} from your dashboard?",
-        "The live card is removed. Any price history already collected is kept.",
-        on_confirm=lambda c=pending: monitor.remove_selected(c),
+        "The live card and its duplicate cards are removed. Any price "
+        "history already collected is kept.",
+        on_confirm=lambda c=pending: monitor.remove_dashboard_stock(c),
         clear_key="_pending_remove",
         confirm_label="🗑 Yes, remove",
         success_message=f"{pending} removed", success_icon="🗑",
@@ -107,8 +111,10 @@ if pending := st.session_state.get("_pending_remove"):
 if st.session_state.get("_clear_all"):
     confirm_action(
         "Remove all stocks from your dashboard?",
-        "This clears every card. Your watchlists and alert rules are kept.",
-        on_confirm=lambda: monitor.set_selected([]),
+        "This clears every card (duplicates included). Your watchlists and "
+        "alert rules are kept.",
+        on_confirm=lambda: [monitor.remove_dashboard_stock(c)
+                            for c in monitor.get_selected()],
         clear_key="_clear_all",
         confirm_label="🗑 Yes, clear all",
         success_message="Dashboard cleared", success_icon="🗑",
@@ -121,11 +127,12 @@ if not selected:
     st.stop()
 
 
-def _save_band(code: str, entries: list) -> None:
-    """Persist the popover's full set of ticked conditions for a stock."""
-    monitor.set_price_conditions(code, entries)
+def _save_band(slot: str, entries: list) -> None:
+    """Persist the popover's full set of ticked conditions for one card."""
+    monitor.set_price_conditions(slot, entries)
+    name = card_display_name(slot)
     if not entries:
-        flash(f"{code} conditions cleared", "🧹")
+        flash(f"{name} conditions cleared", "🧹")
         return
     parts = []
     for condition, lo, hi in entries:
@@ -135,40 +142,63 @@ def _save_band(code: str, entries: list) -> None:
             "range": f"band {min(lo, hi):g}–{max(lo, hi):g}",
             "outside": f"outside {min(lo, hi):g}–{max(lo, hi):g}",
         }.get(condition, f"{lo:g}–{hi:g}"))
-    flash(f"{code} tracking {' · '.join(parts)} BDT", "🎯")
+    flash(f"{name} tracking {' · '.join(parts)} BDT", "🎯")
 
 
-def _clear_band(code: str) -> None:
-    monitor.clear_price_bounds(code)
-    flash(f"{code} conditions cleared", "🧹")
+def _clear_band(slot: str) -> None:
+    monitor.clear_price_bounds(slot)
+    flash(f"{card_display_name(slot)} conditions cleared", "🧹")
 
 
-def _toggle_bell(code: str, muted: bool) -> None:
-    monitor.set_bell_muted(code, muted)
-    flash(f"{code} notifications {'muted' if muted else 'on'}",
+def _toggle_bell(slot: str, muted: bool) -> None:
+    monitor.set_bell_muted(slot, muted)
+    flash(f"{card_display_name(slot)} notifications {'muted' if muted else 'on'}",
           "🔕" if muted else "🔔")
+
+
+def _duplicate_card(slot: str) -> None:
+    """Clone a card into a new independent duplicate of the same stock."""
+    new_slot = monitor.add_card_copy(slot)
+    flash(f"{card_display_name(new_slot)} created — its conditions are "
+          "independent of the original card", "➕")
 
 
 @st.fragment(run_every="12s")
 def cards_grid() -> None:
-    live = [monitor.get_quote(c) for c in monitor.get_selected()]
-    live = [q for q in live if q is not None]
-    detail_code, remove_code = render_cards(
+    # One card per selected stock, plus that stock's duplicate cards right
+    # after it — each duplicate is an independent (quote, slot) instance.
+    copies = monitor.get_card_copies()
+    live = []
+    for c in monitor.get_selected():
+        q = monitor.get_quote(c)
+        if q is None:
+            continue
+        live.append((q, c))
+        for n in copies.get(c, []):
+            live.append((q, f"{c}#{n}"))
+    detail_code, remove_slot = render_cards(
         live, cols=CARDS_PER_ROW, key_prefix="dash",
         show_remove=True, ai_lookup=monitor.ai_result,
         bounds_lookup=monitor.get_price_conditions,
         hits_lookup=monitor.condition_hits,
         on_save_band=_save_band, on_clear_band=_clear_band,
         bell_muted_lookup=monitor.is_bell_muted, on_toggle_bell=_toggle_bell,
+        on_duplicate=_duplicate_card,
     )
-    if remove_code:
-        st.session_state["_pending_remove"] = remove_code
+    if remove_slot:
+        if "#" in remove_slot:
+            # Duplicates are disposable observation cards — drop instantly.
+            monitor.remove_card_copy(remove_slot)
+            flash(f"{card_display_name(remove_slot)} removed", "🗑")
+        else:
+            st.session_state["_pending_remove"] = remove_slot
         st.rerun()
     if detail_code:
         st.session_state["detail_code"] = detail_code
         st.switch_page("views/details.py")
     st.caption("Cards auto-refresh every 12 seconds · set a **🎯 price "
-               "condition** on any card to track how often it triggers")
+               "condition** on any card · **＋** duplicates a card so the "
+               "same stock can be observed with different parameters")
 
 
 cards_grid()

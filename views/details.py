@@ -51,7 +51,7 @@ with c2:
     if on_dashboard:
         if st.button("★ Tracked", width="stretch",
                      help="On your dashboard — click to remove"):
-            monitor.remove_selected(code)
+            monitor.remove_dashboard_stock(code)
             flash(f"{code} untracked", "☆")
             st.rerun()
     else:

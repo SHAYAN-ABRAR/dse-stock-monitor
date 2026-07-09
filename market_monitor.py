@@ -247,7 +247,9 @@ class MarketMonitor:
             self.repo.set_state("price_bounds", bounds)
             # Tracking the stock guarantees its price history keeps
             # accumulating so the hit counters stay accurate going forward.
-            self.add_selected(code)
+            # (``code`` may be a duplicate-card slot like "ACFL#2" — the
+            # tracked stock is always the base code.)
+            self.add_selected(code.split("#", 1)[0])
         elif bounds.pop(code.upper(), None) is not None:
             self.repo.set_state("price_bounds", bounds)
 
@@ -255,6 +257,78 @@ class MarketMonitor:
         bounds = self.get_all_price_bounds()
         if bounds.pop(code.upper(), None) is not None:
             self.repo.set_state("price_bounds", bounds)
+
+    # ==================================================================
+    # Duplicate dashboard cards ("card copies"): the same stock shown on
+    # several cards, each with its OWN conditions + bell, to observe
+    # different parameter sets side by side. The original ("mother") card
+    # stores its settings under the plain code; copy n under "CODE#n".
+    # ==================================================================
+    def get_card_copies(self) -> Dict[str, List[int]]:
+        """Map of code -> sorted duplicate ids, e.g. ``{"ACFL": [2, 3]}``."""
+        raw = self.repo.get_state("card_copies", {}) or {}
+        if not isinstance(raw, dict):
+            return {}
+        out: Dict[str, List[int]] = {}
+        for code, ids in raw.items():
+            if not isinstance(ids, list):
+                continue
+            clean = sorted({int(i) for i in ids
+                            if isinstance(i, int) or str(i).isdigit()})
+            if clean:
+                out[str(code).upper()] = clean
+        return out
+
+    def add_card_copy(self, source_slot: str) -> str:
+        """Add a duplicate card of ``source_slot``'s stock; return its slot.
+
+        The copy starts with a snapshot of the SOURCE card's conditions —
+        edit them freely afterwards, the source card is never affected.
+        """
+        base = source_slot.split("#", 1)[0].upper()
+        copies = self.get_card_copies()
+        ids = copies.get(base, [])
+        new_id = (max(ids) + 1) if ids else 2
+        copies[base] = ids + [new_id]
+        self.repo.set_state("card_copies", copies)
+        new_slot = f"{base}#{new_id}"
+        src = self.get_price_conditions(source_slot)
+        if src:
+            bounds = self.get_all_price_bounds()
+            bounds[new_slot] = [dict(e) for e in src]
+            self.repo.set_state("price_bounds", bounds)
+        return new_slot
+
+    def remove_card_copy(self, slot: str) -> None:
+        """Remove one duplicate card and every setting stored under it."""
+        base, _, num = slot.upper().partition("#")
+        if not num:
+            return          # mother cards go through remove_dashboard_stock
+        copies = self.get_card_copies()
+        ids = [i for i in copies.get(base, []) if str(i) != num]
+        if ids:
+            copies[base] = ids
+        else:
+            copies.pop(base, None)
+        self.repo.set_state("card_copies", copies)
+        self.clear_price_bounds(slot)
+        self.set_bell_muted(slot, False)
+
+    def remove_dashboard_stock(self, code: str) -> None:
+        """Remove a stock from the dashboard along with its duplicate cards.
+
+        The mother card's conditions and recorded history are kept (so
+        re-adding the stock restores them); duplicates are UI constructs,
+        so their settings are deleted with them.
+        """
+        base = code.upper()
+        copies = self.get_card_copies()
+        for n in copies.pop(base, []):
+            slot = f"{base}#{n}"
+            self.clear_price_bounds(slot)
+            self.set_bell_muted(slot, False)
+        self.repo.set_state("card_copies", copies)
+        self.remove_selected(base)
 
     # ==================================================================
     # Per-stock notification bells (YouTube-style 🔔 on each card).

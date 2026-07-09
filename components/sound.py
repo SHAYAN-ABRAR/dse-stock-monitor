@@ -26,7 +26,8 @@ import json
 
 import streamlit as st
 
-from components.cards import condition_label, condition_satisfied
+from components.cards import (card_display_name, condition_label,
+                              condition_satisfied)
 
 # ---- session_state keys ----
 _PREV_KEY = "_alert_prev"        # "CODE|condition" -> {"sig": str, "sat": bool}
@@ -183,41 +184,42 @@ def check_and_chime(monitor) -> None:
     prev = st.session_state.setdefault(_PREV_KEY, {})
     fired = []
     seen = set()
+    copies = monitor.get_card_copies()
     for code in monitor.get_selected():
-        if monitor.is_bell_muted(code):
-            continue                         # bell off: no notifications at all
-        conditions = monitor.get_price_conditions(code)
-        if not conditions:
-            continue
         q = monitor.get_quote(code)
         ltp = q.ltp if q is not None else None
-        for entry in conditions:
-            cond = entry.get("condition", "range")
-            key = f"{code}|{cond}"
-            seen.add(key)
-            sat = condition_satisfied(cond, ltp,
-                                      entry.get("low"), entry.get("high"))
-            if sat is None:                  # no live price yet — keep last state
-                continue
-            sig = _bounds_sig(entry)
-            rec = prev.get(key)
-            prev[key] = {"sig": sig, "sat": sat}
-            if rec is None or rec.get("sig") != sig:
-                continue                     # first sight / reconfigured: seed
-            if sat and not rec.get("sat"):
-                fired.append((code, entry))
+        # Every card of the stock watches independently: the mother card
+        # (slot = code) and each duplicate (slot = "CODE#n").
+        for slot in [code] + [f"{code}#{n}" for n in copies.get(code, [])]:
+            if monitor.is_bell_muted(slot):
+                continue                     # bell off: no notifications at all
+            for entry in monitor.get_price_conditions(slot):
+                cond = entry.get("condition", "range")
+                key = f"{slot}|{cond}"
+                seen.add(key)
+                sat = condition_satisfied(cond, ltp,
+                                          entry.get("low"), entry.get("high"))
+                if sat is None:              # no live price yet — keep last state
+                    continue
+                sig = _bounds_sig(entry)
+                rec = prev.get(key)
+                prev[key] = {"sig": sig, "sat": sat}
+                if rec is None or rec.get("sig") != sig:
+                    continue                 # first sight / reconfigured: seed
+                if sat and not rec.get("sat"):
+                    fired.append((slot, entry))
     # Forget pairs that are no longer tracked, configured, or bell-active.
     for key in list(prev):
         if key not in seen:
             prev.pop(key, None)
     if not fired:
         return
-    for code, entry in fired[:5]:
-        st.toast(f"**{code}** hit your target — {condition_label(entry)}",
-                 icon="🔔")
+    for slot, entry in fired[:5]:
+        st.toast(f"**{card_display_name(slot)}** hit your target — "
+                 f"{condition_label(entry)}", icon="🔔")
     if len(fired) == 1:
-        code, entry = fired[0]
-        flash_tab(f"🔔 {code} hit {condition_label(entry)}")
+        slot, entry = fired[0]
+        flash_tab(f"🔔 {card_display_name(slot)} hit {condition_label(entry)}")
     else:
         flash_tab(f"🔔 {len(fired)} price targets hit!")
     play_chime(reps=2, vol=0.85)

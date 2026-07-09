@@ -29,7 +29,7 @@ THEME_DEFAULT = "dark"
 
 # Bump when MarketMonitor / AppConfig gain or lose fields so a live server
 # rebuilds the cached singleton instead of serving a stale object.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 @st.cache_resource(show_spinner=False)
@@ -43,7 +43,7 @@ def get_monitor() -> MarketMonitor:
     # Rebuild if a hot-reload left us holding a monitor from an older code
     # version (missing a cfg field or a newly added method).
     if (not hasattr(monitor.cfg, "refresh_interval_seconds")
-            or not hasattr(monitor, "is_bell_muted")):
+            or not hasattr(monitor, "get_card_copies")):
         _build_monitor.clear()
         monitor = _build_monitor(SCHEMA_VERSION)
     return monitor

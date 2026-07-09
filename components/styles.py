@@ -239,6 +239,11 @@ div[class*="st-key-card_down_"]:hover { box-shadow: 0 22px 54px rgba(185,28,28,0
     background: var(--surface-2); border: 1px solid var(--border);
     padding: 1px 7px; border-radius: 999px;
 }
+.sc-tags { display: flex; align-items: center; gap: 4px; }
+.sc-idx.sc-copy {
+    color: #7c3aed; background: rgba(124,58,237,0.12);
+    border-color: rgba(124,58,237,0.35);
+}
 .sc-code { font-size: 1.05rem; font-weight: 800; color: var(--text-strong); margin: 2px 0 0 0; letter-spacing: 0.01em; }
 .sc-sector { font-size: 0.60rem; color: var(--text-faint); margin-top: 1px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
 .sc-ltp { font-size: 1.55rem; font-weight: 800; color: var(--text-strong); line-height: 1.0; margin: 0; font-variant-numeric: tabular-nums; transition: color .2s ease; white-space: nowrap; }
@@ -279,13 +284,15 @@ div[class*="st-key-bandpop_"] button [data-testid="stMarkdownContainer"],
 div[class*="st-key-bandpop_"] button p {
     overflow: visible !important; line-height: 1.35 !important;
 }
-/* Per-card notification bell (YouTube-style): amber when armed, dim when
-   muted. The label is a Material-symbol icon, so it sizes exactly. */
-div[class*="_bell_on_"] button, div[class*="_bell_off_"] button {
+/* Icon-only card buttons (bell + duplicate '+'): Material-symbol labels,
+   so they size exactly. Bell is amber when armed, dim when muted. */
+div[class*="_bell_on_"] button, div[class*="_bell_off_"] button,
+div[class*="_dup_"] button {
     padding: 0.28rem 0.3rem;
 }
 div[class*="_bell_on_"] button [data-testid="stIconMaterial"],
-div[class*="_bell_off_"] button [data-testid="stIconMaterial"] {
+div[class*="_bell_off_"] button [data-testid="stIconMaterial"],
+div[class*="_dup_"] button [data-testid="stIconMaterial"] {
     font-size: 1.15rem; line-height: 1;
 }
 div[class*="_bell_on_"] button {

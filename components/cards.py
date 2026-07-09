@@ -85,6 +85,12 @@ def condition_satisfied(condition: str, ltp: Optional[float],
     return low is not None and high is not None and low <= ltp <= high
 
 
+def card_display_name(slot: str) -> str:
+    """Human name for a card slot: 'ACFL' or 'ACFL (copy 2)'."""
+    base, _, num = slot.partition("#")
+    return f"{base} (copy {num})" if num else base
+
+
 def condition_label(entry: dict) -> str:
     """Compact human label for one tracked condition, e.g. 'LTP ≥ 3.1 BDT'."""
     cond = entry.get("condition", "range")
@@ -178,13 +184,14 @@ def hit_box_html(conditions: Optional[list],
 
 
 def card_body_html(q: StockQuote, ai: Optional[AnalysisResult] = None,
-                   hit_html: str = "") -> str:
+                   hit_html: str = "", copy_n: str = "") -> str:
     """Return the HTML for the top section of a card (header, price, counter).
 
     This is the content that lives *inside* the card container — the card
     frame itself is a real Streamlit container (so interactive controls can
     sit inside it), styled via the ``st-key-card_`` CSS. ``hit_html`` (the
     'times in band' counter) is a full-width strip beneath the live price.
+    ``copy_n`` marks a duplicate card with a violet 'copy n' badge.
     """
     direction = q.direction
     arrow = _ARROW[direction]
@@ -199,6 +206,8 @@ def card_body_html(q: StockQuote, ai: Optional[AnalysisResult] = None,
     ai_chip = ""
     if ai is not None and ai.is_anomaly:
         ai_chip = '<span style="color:#fbbf24;font-weight:700;">⚡ AI anomaly</span>'
+    copy_chip = (f'<span class="sc-idx sc-copy">copy {copy_n}</span>'
+                 if copy_n else "")
 
     return f"""
     <div class="sc-body">
@@ -207,7 +216,7 @@ def card_body_html(q: StockQuote, ai: Optional[AnalysisResult] = None,
           <div class="sc-code">{q.code}</div>
           <div class="sc-sector">{q.sector}</div>
         </div>
-        <span class="sc-idx">#{q.index}</span>
+        <div class="sc-tags">{copy_chip}<span class="sc-idx">#{q.index}</span></div>
       </div>
       <div class="sc-pricerow">
         <div class="sc-ltp">{ltp} <small>BDT</small></div>
@@ -220,7 +229,8 @@ def card_body_html(q: StockQuote, ai: Optional[AnalysisResult] = None,
 
 
 def _render_band_setter(
-    q: StockQuote, key_prefix: str, *, conditions: Optional[list] = None,
+    q: StockQuote, key_prefix: str, *, slot: str, suffix: str,
+    conditions: Optional[list] = None,
     on_save_band=None, on_clear_band=None,
 ) -> None:
     """Render the per-card price-condition setter (checkboxes + inputs).
@@ -229,8 +239,12 @@ def _render_band_setter(
     tracked at once: each ticked checkbox reveals that condition's own
     threshold / band inputs. Save persists exactly the ticked set; the live
     counters are rendered separately, under the price.
+
+    ``slot`` is the card's storage identity (plain code, or "CODE#n" for a
+    duplicate card) handed to the save/clear callbacks; ``suffix`` is its
+    CSS-safe form used in widget keys.
     """
-    code = q.code
+    code = suffix
     ref = q.ltp if q.ltp is not None else (q.close or q.ycp or 0.0)
     step = _price_step(ref)
     saved = {e.get("condition", "range"): e
@@ -300,14 +314,14 @@ def _render_band_setter(
         if cb[0].button("💾 Save", type="primary", width="stretch",
                         key=f"{key_prefix}_bsave_{code}"):
             if on_save_band:
-                on_save_band(code, entries)
+                on_save_band(slot, entries)
             st.session_state[nonce_key] = nonce + 1  # re-mount popover closed
             st.rerun()
         if cb[1].button("✕", width="stretch", disabled=not saved,
-                        help="Clear every condition on this stock",
+                        help="Clear every condition on this card",
                         key=f"{key_prefix}_bclr_{code}"):
             if on_clear_band:
-                on_clear_band(code)
+                on_clear_band(slot)
             # Drop the checkbox states so they re-seed unticked next run
             # (their keys survive the popover re-mount otherwise).
             for cond in COND_OPTIONS:
@@ -316,31 +330,45 @@ def _render_band_setter(
             st.rerun()
 
 
-def _render_bell(col, code: str, key_prefix: str,
+def _render_bell(col, slot: str, suffix: str, key_prefix: str,
                  bell_muted_lookup, on_toggle_bell) -> None:
-    """YouTube-style notification bell: armed / muted, per stock.
+    """YouTube-style notification bell: armed / muted, per card.
 
     The label is a Material icon (not an emoji): colour-emoji glyphs render
     taller than their line box and get clipped inside compact buttons,
     while the icon font sizes exactly.
     """
-    muted = bool(bell_muted_lookup(code)) if bell_muted_lookup else False
+    name = card_display_name(slot)
+    muted = bool(bell_muted_lookup(slot)) if bell_muted_lookup else False
     state = "off" if muted else "on"
-    tip = (f"Notifications for {code} are MUTED — click to re-arm the chime "
+    tip = (f"Notifications for {name} are MUTED — click to re-arm the chime "
            "and tab alert" if muted else
-           f"Notifications for {code} are ON — a price-condition hit chimes "
+           f"Notifications for {name} are ON — a price-condition hit chimes "
            "and flashes this tab. Click to mute")
     icon = (":material/notifications_off:" if muted
             else ":material/notifications_active:")
     if col.button(icon, width="stretch",
-                  key=f"{key_prefix}_bell_{state}_{code}", help=tip):
+                  key=f"{key_prefix}_bell_{state}_{suffix}", help=tip):
         if on_toggle_bell:
-            on_toggle_bell(code, not muted)
+            on_toggle_bell(slot, not muted)
+        st.rerun()
+
+
+def _render_dup(col, slot: str, suffix: str, key_prefix: str,
+                on_duplicate) -> None:
+    """'+' button: spawn an independent duplicate card of this stock."""
+    if col.button(":material/add:", width="stretch",
+                  key=f"{key_prefix}_dup_{suffix}",
+                  help="Duplicate card — adds another card of this stock with "
+                       "its own independent conditions and bell; changing the "
+                       "copy never affects this card"):
+        if on_duplicate:
+            on_duplicate(slot)
         st.rerun()
 
 
 def render_cards(
-    quotes: List[StockQuote],
+    cards: List,
     *,
     cols: int = 3,
     key_prefix: str = "card",
@@ -352,34 +380,48 @@ def render_cards(
     on_clear_band=None,
     bell_muted_lookup=None,
     on_toggle_bell=None,
+    on_duplicate=None,
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Render a responsive grid of stock cards.
 
-    Returns ``(detail_code, remove_code)`` — the trading code the user asked
-    to view details for, and the one they asked to remove (each or both may
-    be None). The caller decides what to do (e.g. confirm before removing).
-    ``ai_lookup`` is an optional callable code -> AnalysisResult.
+    ``cards`` holds either plain ``StockQuote``s or ``(StockQuote, slot)``
+    pairs — the slot is the card's identity: the plain code for a stock's
+    original ("mother") card, ``"CODE#n"`` for a duplicate card. Conditions,
+    hit counters and the bell are stored per SLOT, so a duplicate observes
+    its own parameters without ever touching the mother card's.
+
+    Returns ``(detail_code, remove_slot)`` — the trading code the user asked
+    to view details for, and the card slot they asked to remove (each or
+    both may be None). The caller decides what to do (e.g. confirm before
+    removing a mother card, drop a duplicate straight away).
 
     When ``bounds_lookup``/``hits_lookup``/``on_save_band``/``on_clear_band``
     are supplied, each card also shows the condition setter and one live hit
-    counter per tracked condition. ``bounds_lookup`` returns a stock's full
-    condition list (``monitor.get_price_conditions``). With
-    ``bell_muted_lookup``/``on_toggle_bell``, each card gets a 🔔 bell that
-    arms / mutes that stock's hit notifications (chime + tab flash).
+    counter per tracked condition. With ``bell_muted_lookup``/
+    ``on_toggle_bell``, each card gets a 🔔 bell that arms / mutes its own
+    hit notifications (chime + tab flash). ``on_duplicate`` adds a ＋ button
+    that clones the card into a new independent duplicate.
     """
     detail_code: Optional[str] = None
     remove_code: Optional[str] = None
     show_band = bounds_lookup is not None
-    for start in range(0, len(quotes), cols):
-        row = quotes[start:start + cols]
+    specs = [c if isinstance(c, tuple) else (c, c.code) for c in cards]
+    for start in range(0, len(specs), cols):
+        row = specs[start:start + cols]
         columns = st.columns(cols, gap="medium")
-        for col, q in zip(columns, row):
+        for col, (q, slot) in zip(columns, row):
             with col:
+                copy_n = slot.partition("#")[2]
+                # Widget keys need a CSS-safe identity ('#' breaks the
+                # st-key-* class): mother = code, copy n = CODE_cn.
+                suffix = f"{q.code}_c{copy_n}" if copy_n else q.code
                 ai = ai_lookup(q.code) if ai_lookup else None
                 # Counters under the price: compute hits/satisfied once per
                 # tracked condition and embed the strip beneath the LTP.
-                conditions = (bounds_lookup(q.code) or []) if show_band else []
+                # Conditions belong to the SLOT; hits query the stock's
+                # recorded history, so they use the base code.
+                conditions = (bounds_lookup(slot) or []) if show_band else []
                 hit_html = ""
                 if show_band:
                     per = []
@@ -395,39 +437,36 @@ def render_cards(
                 # setter (live widgets) sits INSIDE the card. Direction is
                 # encoded in the key to colour the accent rail.
                 with st.container(border=True,
-                                  key=f"card_{q.direction}_{key_prefix}_{q.code}"):
-                    st.markdown(card_body_html(q, ai, hit_html),
+                                  key=f"card_{q.direction}_{key_prefix}_{suffix}"):
+                    st.markdown(card_body_html(q, ai, hit_html, copy_n=copy_n),
                                 unsafe_allow_html=True)
-                    has_bell = on_toggle_bell is not None
+                    extras = (int(on_duplicate is not None)
+                              + int(on_toggle_bell is not None)
+                              + int(bool(show_remove)))
+                    btn_cols = (st.columns([2.2] + [0.62] * extras,
+                                           gap="small")
+                                if extras else [st.container()])
+                    it = iter(btn_cols)
+                    if next(it).button("View Details",
+                                       key=f"{key_prefix}_d_{suffix}",
+                                       width="stretch"):
+                        detail_code = q.code
+                    if on_duplicate is not None:
+                        _render_dup(next(it), slot, suffix, key_prefix,
+                                    on_duplicate)
+                    if on_toggle_bell is not None:
+                        _render_bell(next(it), slot, suffix, key_prefix,
+                                     bell_muted_lookup, on_toggle_bell)
                     if show_remove:
-                        if has_bell:
-                            b1, bb, b2 = st.columns([2.6, 0.7, 0.7])
-                            _render_bell(bb, q.code, key_prefix,
-                                         bell_muted_lookup, on_toggle_bell)
-                        else:
-                            b1, b2 = st.columns([3, 1])
-                        if b1.button("View Details",
-                                     key=f"{key_prefix}_d_{q.code}",
-                                     width="stretch"):
-                            detail_code = q.code
-                        if b2.button("✕", key=f"{key_prefix}_x_{q.code}",
-                                     help=f"Remove {q.code} from dashboard",
-                                     width="stretch"):
-                            remove_code = q.code
-                    else:
-                        if has_bell:
-                            b1, bb = st.columns([3.3, 0.7])
-                            _render_bell(bb, q.code, key_prefix,
-                                         bell_muted_lookup, on_toggle_bell)
-                        else:
-                            b1 = st
-                        if b1.button("View Details",
-                                     key=f"{key_prefix}_d_{q.code}",
-                                     width="stretch"):
-                            detail_code = q.code
+                        x_help = ("Remove this duplicate card" if copy_n
+                                  else f"Remove {q.code} from dashboard")
+                        if next(it).button("✕", key=f"{key_prefix}_x_{suffix}",
+                                           help=x_help, width="stretch"):
+                            remove_code = slot
                     if show_band:
                         _render_band_setter(
-                            q, key_prefix, conditions=conditions,
+                            q, key_prefix, slot=slot, suffix=suffix,
+                            conditions=conditions,
                             on_save_band=on_save_band, on_clear_band=on_clear_band,
                         )
                 # breathing room so the next row doesn't collide
