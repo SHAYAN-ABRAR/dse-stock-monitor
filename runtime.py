@@ -24,8 +24,10 @@ from utils import (fmt_hhmm_12, fmt_ts, is_trading_hours, now_dhaka,
                    parse_hhmm)
 
 # Available UI themes and the default used before a choice is persisted.
+# New visitors land in LIGHT mode; the sidebar toggle still persists a
+# different choice across reloads.
 THEMES = ("dark", "light")
-THEME_DEFAULT = "dark"
+THEME_DEFAULT = "light"
 
 # Bump when MarketMonitor / AppConfig gain or lose fields so a live server
 # rebuilds the cached singleton instead of serving a stale object.

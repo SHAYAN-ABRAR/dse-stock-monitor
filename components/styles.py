@@ -284,17 +284,35 @@ div[class*="st-key-bandpop_"] button [data-testid="stMarkdownContainer"],
 div[class*="st-key-bandpop_"] button p {
     overflow: visible !important; line-height: 1.35 !important;
 }
-/* Icon-only card buttons (bell + duplicate '+'): Material-symbol labels,
-   so they size exactly. Bell is amber when armed, dim when muted. */
-div[class*="_bell_on_"] button, div[class*="_bell_off_"] button,
-div[class*="_dup_"] button {
-    padding: 0.28rem 0.3rem;
+/* Icon-only card buttons (＋ duplicate, bell, ✕ remove): uniform squares
+   with the glyph dead-centre. Their inner containers carry mixed
+   line-heights (icon font vs text glyph), which left the icons floating
+   off-centre — flex-centre every layer and normalise the line box. */
+div[class*="st-key-card_"] div[class*="_dup_"] button,
+div[class*="st-key-card_"] div[class*="_bell_on_"] button,
+div[class*="st-key-card_"] div[class*="_bell_off_"] button,
+div[class*="st-key-card_"] div[class*="_x_"] button {
+    padding: 0 !important; height: 2rem; min-height: 2rem !important;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+div[class*="st-key-card_"] div[class*="_dup_"] button [data-testid="stMarkdownContainer"],
+div[class*="st-key-card_"] div[class*="_bell_on_"] button [data-testid="stMarkdownContainer"],
+div[class*="st-key-card_"] div[class*="_bell_off_"] button [data-testid="stMarkdownContainer"],
+div[class*="st-key-card_"] div[class*="_x_"] button [data-testid="stMarkdownContainer"],
+div[class*="st-key-card_"] div[class*="_dup_"] button p,
+div[class*="st-key-card_"] div[class*="_bell_on_"] button p,
+div[class*="st-key-card_"] div[class*="_bell_off_"] button p,
+div[class*="st-key-card_"] div[class*="_x_"] button p {
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1 !important; margin: 0 !important;
 }
 div[class*="_bell_on_"] button [data-testid="stIconMaterial"],
 div[class*="_bell_off_"] button [data-testid="stIconMaterial"],
 div[class*="_dup_"] button [data-testid="stIconMaterial"] {
-    font-size: 1.15rem; line-height: 1;
+    font-size: 1.15rem; line-height: 1; display: block;
 }
+/* the ✕ is a text glyph — size it to match the icon buttons visually */
+div[class*="st-key-card_"] div[class*="_x_"] button p { font-size: 0.92rem !important; }
 div[class*="_bell_on_"] button {
     background: rgba(245,158,11,0.16) !important;
     border: 1px solid rgba(245,158,11,0.50) !important;
