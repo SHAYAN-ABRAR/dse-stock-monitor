@@ -24,6 +24,7 @@ Data source: <https://www.dsebd.org/latest_share_price_scroll_l.php>
 | **Searchable multi-select** | Pick any number of stocks by trading code or index number (type-ahead, keyboard nav, multi-select) |
 | **Live dashboard** | Selected stocks render as responsive, colour-coded **glass cards** (green up / red down / blue flat) that auto-refresh — hover animations & micro-interactions |
 | **Deep-dive analytics** | Per-stock page: basic info, price data, trading activity, day-range indicator, performance gauge (bullish/neutral/bearish), AI momentum, and Plotly charts (live price trend, volume, price-vs-volume) |
+| **Company report download** | Every card has a **Download** dropdown (CSV / Excel): the stock's full DSE company page — every table — plus the Closing Price, Total Trade and Total Volume graphs at 2 years |
 | **Historical storage** | Tracked stocks are recorded to **SQLite** (`dse_market.db`) for trend charts & analysis |
 | **Watchlists** | Create / load / delete named groups ("Banking", "High Volume", …); load one onto the dashboard in a click |
 | **Price alerts** | Per-stock rules — `above`, `below`, `enters a band`, `exits a band` — with per-rule cooldown; fires a **WhatsApp** message and logs every alert |
@@ -58,6 +59,7 @@ DSE/
 │   └── detail.py           #   Detailed analytics view
 │
 ├── market.py               # MarketScraper — full-table scrape → StockQuote[]
+├── company.py              # Company-page scraper + CSV/Excel report exporters
 ├── market_db.py            # MarketRepository — SQLite (snapshot/history/rules/…)
 ├── market_monitor.py       # Background engine: refresh + alerts + AI
 │

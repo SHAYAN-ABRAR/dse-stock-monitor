@@ -270,6 +270,29 @@ div[class*="st-key-bandpop_"] button {
     padding: 0.28rem 0.6rem !important; min-height: 2rem !important;
 }
 div[class*="st-key-bandpop_"] button p { font-size: 0.8rem !important; }
+/* The Download popover (dropdown) trigger: same compact pill as the band
+   setter, but neutral — themed via the surface vars so it stays visible
+   in BOTH modes (unstyled it fell back to the pinned dark base theme,
+   i.e. an unreadable dark bar on the light card). */
+div[class*="st-key-dlpop_"] { margin-top: 0.1rem; }
+div[class*="st-key-dlpop_"] button {
+    width: 100% !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important; font-weight: 700 !important;
+    border-radius: 10px !important; justify-content: center !important;
+    padding: 0.28rem 0.6rem !important; min-height: 2rem !important;
+}
+div[class*="st-key-dlpop_"] button p { font-size: 0.8rem !important; }
+div[class*="st-key-dlpop_"] button [data-testid="stIconMaterial"],
+div[class*="st-key-dlpop_"] button svg {
+    color: var(--text) !important; fill: var(--text) !important;
+}
+div[class*="st-key-dlpop_"] button:hover {
+    transform: translateY(-1px);
+    background: var(--surface-2) !important;
+    border-color: var(--border-2) !important;
+}
 /* Compact in-card controls so four cards fit per row */
 div[class*="st-key-card_"] div.stButton button {
     padding: 0.28rem 0.6rem; min-height: 2rem; border-radius: 10px;
@@ -281,7 +304,9 @@ div[class*="st-key-card_"] div.stButton button p { font-size: 0.82rem !important
 div[class*="st-key-card_"] div.stButton button [data-testid="stMarkdownContainer"],
 div[class*="st-key-card_"] div.stButton button p,
 div[class*="st-key-bandpop_"] button [data-testid="stMarkdownContainer"],
-div[class*="st-key-bandpop_"] button p {
+div[class*="st-key-bandpop_"] button p,
+div[class*="st-key-dlpop_"] button [data-testid="stMarkdownContainer"],
+div[class*="st-key-dlpop_"] button p {
     overflow: visible !important; line-height: 1.35 !important;
 }
 /* Icon-only card buttons (＋ duplicate, bell, ✕ remove): uniform squares
@@ -439,6 +464,13 @@ div.stButton button, div.stDownloadButton button {
     background: var(--surface); color: var(--text);
     backdrop-filter: blur(8px); padding: 0.5rem 1rem; transition: all .2s ease;
 }
+/* Icon glyphs inside download buttons (the Download popover's CSV/Excel
+   options) must follow the themed text colour, not the pinned base theme.
+   Kept OFF plain st.button so the bell/primary icon colours still win. */
+div.stDownloadButton button:not([kind="primary"]) [data-testid="stIconMaterial"] {
+    color: var(--text) !important;
+}
+div.stDownloadButton button:hover { transform: translateY(-2px); border-color: var(--border-2); background: var(--surface-2); }
 div.stButton button:hover { transform: translateY(-2px); border-color: var(--border-2); background: var(--surface-2); }
 div.stButton button[kind="primary"] { background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; border: none; box-shadow: 0 6px 20px rgba(79,70,229,0.35); }
 div.stButton button[kind="primary"]:hover { filter: brightness(1.1); box-shadow: 0 10px 28px rgba(79,70,229,0.5); }

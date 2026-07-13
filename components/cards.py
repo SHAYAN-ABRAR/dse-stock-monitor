@@ -5,7 +5,8 @@ Premium stock-card rendering for the dashboard grid.
 
 Each card is glassmorphic, colour-coded by direction (green up / red down
 / blue flat), and carries an interactive "View Details" + remove control
-rendered as real Streamlit buttons beneath the HTML body.
+rendered as real Streamlit buttons beneath the HTML body, plus a Download
+dropdown (full DSE company page as CSV / Excel) under the button row.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from typing import List, Optional, Tuple
 import streamlit as st
 
 from ai_analyzer import AnalysisResult
+from company import csv_download_bytes, excel_download_bytes
 from market import StockQuote
 from utils import fmt_money, fmt_signed
 
@@ -330,6 +332,48 @@ def _render_band_setter(
             st.rerun()
 
 
+def _render_download(q: StockQuote, key_prefix: str, suffix: str) -> None:
+    """Download dropdown: the stock's FULL DSE company page as CSV / Excel.
+
+    The popover is the dropdown; inside it, two download buttons offer the
+    same report as CSV or Excel. ``data`` is a callable, so nothing is
+    fetched while cards render — only when an option is clicked does the
+    report get built: every table on displayCompany.php?name=CODE plus the
+    Closing Price / Total Trade / Total Volume graphs at "2 years"
+    (see company.py). ``on_click="ignore"`` keeps the click from rerunning
+    the fragment, and a short TTL cache means CSV then Excel of the same
+    stock reuse one scrape.
+    """
+    code = q.code
+    stamp = datetime.now().strftime("%Y-%m-%d")
+    with st.popover("Download", icon=":material/download:", width="stretch",
+                    key=f"dlpop_{key_prefix}_{suffix}"):
+        st.caption(f"Full DSE company page for **{code}** — every table plus "
+                   "the Closing Price, Total Trade and Total Volume graphs "
+                   "(2 years). Fetched fresh from dsebd.org when you click.")
+        st.download_button(
+            "Download as CSV",
+            data=lambda code=code: csv_download_bytes(code),
+            file_name=f"{code}_DSE_company_{stamp}.csv",
+            mime="text/csv",
+            icon=":material/csv:", width="stretch", on_click="ignore",
+            key=f"{key_prefix}_dlcsv_{suffix}",
+            help="One CSV file: all company-page sections, then each graph's "
+                 "date/value series",
+        )
+        st.download_button(
+            "Download as Excel",
+            data=lambda code=code: excel_download_bytes(code),
+            file_name=f"{code}_DSE_company_{stamp}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument"
+                 ".spreadsheetml.sheet",
+            icon=":material/table_view:", width="stretch", on_click="ignore",
+            key=f"{key_prefix}_dlxlsx_{suffix}",
+            help="One workbook: a Company sheet with every section + one "
+                 "sheet per graph",
+        )
+
+
 def _render_bell(col, slot: str, suffix: str, key_prefix: str,
                  bell_muted_lookup, on_toggle_bell) -> None:
     """YouTube-style notification bell: armed / muted, per card.
@@ -463,6 +507,7 @@ def render_cards(
                         if next(it).button("✕", key=f"{key_prefix}_x_{suffix}",
                                            help=x_help, width="stretch"):
                             remove_code = slot
+                    _render_download(q, key_prefix, suffix)
                     if show_band:
                         _render_band_setter(
                             q, key_prefix, slot=slot, suffix=suffix,
