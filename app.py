@@ -48,10 +48,13 @@ details = st.Page("views/details.py", title="Stock Details",
                   icon=":material/insights:")
 watchlists = st.Page("views/watchlists.py", title="Watchlists",
                      icon=":material/star:")
+bulk_download = st.Page("views/bulk_download.py", title="Bulk Download",
+                        icon=":material/download:")
 settings = st.Page("views/settings.py", title="Settings",
                    icon=":material/settings:")
 
-nav = st.navigation([dashboard, overview, details, watchlists, settings])
+nav = st.navigation([dashboard, overview, details, watchlists,
+                     bulk_download, settings])
 
 # Shared chrome rendered under the navigation on every view.
 render_sidebar(monitor)

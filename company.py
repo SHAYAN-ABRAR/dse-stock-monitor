@@ -43,9 +43,10 @@ import logging
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 import requests
@@ -340,15 +341,12 @@ def _contents(report: CompanyReport) -> List[Tuple[int, str]]:
     return items
 
 
-def report_to_csv_bytes(report: CompanyReport) -> bytes:
-    """One CSV: metadata, CONTENTS, then every numbered section and graph.
+def _write_report_csv_body(writer, report: CompanyReport) -> None:
+    """Write one report's CONTENTS + numbered sections + graphs to a writer.
 
-    Encoded UTF-8 with BOM so Excel opens it with the right charset.
+    Shared by the single-stock export and each stock's block inside the
+    bulk export, so both files carry the identical structure.
     """
-    buf = io.StringIO(newline="")
-    writer = csv.writer(buf)
-    writer.writerows(_meta_rows(report))
-    writer.writerow([])
     writer.writerow(["CONTENTS"])
     for number, title in _contents(report):
         writer.writerow([number, title])
@@ -369,6 +367,18 @@ def report_to_csv_bytes(report: CompanyReport) -> bytes:
             writer.writerows(graph.points)
         else:
             writer.writerow(["No data available"])
+
+
+def report_to_csv_bytes(report: CompanyReport) -> bytes:
+    """One CSV: metadata, CONTENTS, then every numbered section and graph.
+
+    Encoded UTF-8 with BOM so Excel opens it with the right charset.
+    """
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf)
+    writer.writerows(_meta_rows(report))
+    writer.writerow([])
+    _write_report_csv_body(writer, report)
     return buf.getvalue().encode("utf-8-sig")
 
 
@@ -503,3 +513,232 @@ def excel_download_bytes(code: str) -> bytes:
         out = io.BytesIO()
         wb.save(out)
         return out.getvalue()
+
+
+# ======================================================================
+# Bulk export — many stocks (up to the whole market) in ONE file.
+# Used by views/bulk_download.py. Each stock's block/sheet carries the
+# same structure as the single-stock export above.
+# ======================================================================
+# Concurrency for the bulk scrape. Each stock needs 4 requests (company
+# page + 3 graphs); a small worker pool keeps a whole-market export
+# feasible (~minutes) while staying gentle on dsebd.org.
+BULK_MAX_WORKERS = 6
+
+BULK_SOURCE = "https://www.dsebd.org"
+
+# One failed stock recorded as (trading code, reason).
+Failure = Tuple[str, str]
+
+
+def fetch_reports_bulk(
+    codes: Sequence[str],
+    progress_cb: Optional[Callable[[int, int, str], None]] = None,
+    max_workers: int = BULK_MAX_WORKERS,
+) -> Tuple[List[CompanyReport], List[Failure]]:
+    """Fetch many stocks' full company reports concurrently.
+
+    Returns ``(reports, failures)``: reports in the order the codes were
+    given, failures as ``(code, reason)`` for stocks whose scrape failed
+    (the rest of the bundle still succeeds). ``progress_cb(done, total,
+    code)`` is invoked after each stock completes — the bulk page uses it
+    to drive a progress bar. Individual reports go through the module's
+    TTL cache, so a CSV build followed by an Excel build (or a retry
+    after a partial failure) reuses the scrapes it already has.
+    """
+    ordered = list(dict.fromkeys(
+        c.strip().upper() for c in codes if c and c.strip()))
+    total = len(ordered)
+    results: Dict[str, CompanyReport] = {}
+    errors: Dict[str, str] = {}
+    done = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(get_company_report, c): c for c in ordered}
+        for future in as_completed(futures):
+            code = futures[future]
+            try:
+                results[code] = future.result()
+            except Exception as exc:  # keep going — report the stragglers
+                logger.warning("Bulk report for %s failed: %s", code, exc)
+                errors[code] = str(exc)
+            done += 1
+            if progress_cb:
+                progress_cb(done, total, code)
+    reports = [results[c] for c in ordered if c in results]
+    failures = [(c, errors[c]) for c in ordered if c in errors]
+    return reports, failures
+
+
+def _bulk_meta_rows(reports: List[CompanyReport],
+                    failures: Sequence[Failure]) -> List[List[object]]:
+    rows: List[List[object]] = [
+        ["DSE BULK COMPANY REPORT"],
+        ["Stocks included", len(reports)],
+    ]
+    if failures:
+        rows.append(["Stocks failed", len(failures)])
+    rows += [
+        ["Source", BULK_SOURCE],
+        ["Downloaded (Asia/Dhaka)",
+         datetime.now(ZoneInfo("Asia/Dhaka")).strftime(DHAKA_FMT)],
+    ]
+    return rows
+
+
+def reports_to_csv_bytes(reports: List[CompanyReport],
+                         failures: Sequence[Failure] = ()) -> bytes:
+    """ONE CSV bundling many stocks' full company reports.
+
+    Opens with the bundle metadata, a CONTENTS list of every stock, and
+    (if any) the failed stocks with reasons. Then one block per stock —
+    each block identical in structure to the single-stock CSV: source
+    line, CONTENTS, numbered sections, then the three 2-year graph
+    series. UTF-8 with BOM so Excel opens it with the right charset.
+    """
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf)
+    writer.writerows(_bulk_meta_rows(reports, failures))
+    writer.writerow([])
+    writer.writerow(["CONTENTS"])
+    writer.writerow(["#", "Trading Code", "Company Name", "Report blocks"])
+    for i, r in enumerate(reports, 1):
+        writer.writerow([i, r.code, r.company_name,
+                         f"{len(r.sections)} sections + {len(r.graphs)} graphs"])
+    if failures:
+        writer.writerow([])
+        writer.writerow(["FAILED STOCKS"])
+        writer.writerow(["Trading Code", "Reason"])
+        for code, reason in failures:
+            writer.writerow([code, reason])
+
+    for i, r in enumerate(reports, 1):
+        writer.writerow([])
+        writer.writerow(["=" * 72])
+        writer.writerow([f"STOCK {i} OF {len(reports)} — {r.code} · "
+                         f"{r.company_name}"])
+        writer.writerow(["Source", r.source_url])
+        writer.writerow(["Fetched (Asia/Dhaka)",
+                         r.fetched_at.strftime(DHAKA_FMT)])
+        writer.writerow([])
+        _write_report_csv_body(writer, r)
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def _safe_sheet_name(code: str, used: set) -> str:
+    """Excel-legal, unique sheet name for a trading code (≤31 chars)."""
+    name = re.sub(r"[\[\]:*?/\\]", "_", code)[:31] or "STOCK"
+    base, n = name, 2
+    while name in used:
+        name = f"{base[:28]}_{n}"
+        n += 1
+    used.add(name)
+    return name
+
+
+def reports_to_excel_bytes(reports: List[CompanyReport],
+                           failures: Sequence[Failure] = ()) -> bytes:
+    """ONE workbook bundling many stocks: Overview + one sheet per stock.
+
+    The Overview sheet lists the bundle metadata and every stock with its
+    sheet name (plus any failures). Each stock sheet then carries the
+    full single-stock report — banner, source, the numbered page
+    sections and the three 2-year graph series — i.e. the same content
+    as the per-card Excel export, condensed to one sheet per stock so a
+    whole-market bundle stays navigable.
+
+    Built with openpyxl's write-only mode: a whole-market export is
+    ~400 sheets / several hundred thousand rows, which streams fine but
+    would not fit comfortably in a normal in-memory cell tree.
+    """
+    from openpyxl import Workbook
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    title_font = Font(bold=True, size=14, color="FFFFFF")
+    title_fill = PatternFill("solid", start_color="4F46E5")   # indigo banner
+    section_font = Font(bold=True, size=11, color="FFFFFF")
+    section_fill = PatternFill("solid", start_color="6366F1")
+    header_font = Font(bold=True)
+    header_fill = PatternFill("solid", start_color="EEF2FF")
+
+    wb = Workbook(write_only=True)
+
+    def styled(ws, values: List[object], font, fill, pad: int = 0) -> None:
+        """Append one row with every cell styled (padded to ``pad`` cells)."""
+        vals = list(values) + [""] * max(0, pad - len(values))
+        row = []
+        for v in vals:
+            cell = WriteOnlyCell(ws, value=v)
+            cell.font = font
+            cell.fill = fill
+            row.append(cell)
+        ws.append(row)
+
+    used_names: set = set()
+    sheet_names = [_safe_sheet_name(r.code, used_names) for r in reports]
+
+    # --- Overview: metadata + every stock and where to find it --------
+    ws = wb.create_sheet("Overview")
+    for col, width in (("A", 26), ("B", 20), ("C", 64), ("D", 40)):
+        ws.column_dimensions[col].width = width
+    meta = _bulk_meta_rows(reports, failures)
+    styled(ws, meta[0], title_font, title_fill, pad=4)
+    for row in meta[1:]:
+        ws.append(row)
+    ws.append([])
+    styled(ws, ["#", "Trading Code", "Company Name", "Status / Sheet"],
+           header_font, header_fill)
+    for i, (r, sheet) in enumerate(zip(reports, sheet_names), 1):
+        ws.append([i, r.code, r.company_name, f"sheet '{sheet}'"])
+    for code, reason in failures:
+        ws.append(["—", code, f"FAILED — {reason}", "not included"])
+
+    # --- One sheet per stock: full report, sections then graphs -------
+    for r, sheet_name in zip(reports, sheet_names):
+        ws = wb.create_sheet(sheet_name)
+        # Column widths must be set before rows in write-only mode.
+        max_cols = max(
+            [2] + [len(row) for s in r.sections if s.kind == "matrix"
+                   for row in s.rows])
+        ws.column_dimensions["A"].width = 40
+        ws.column_dimensions["B"].width = 52
+        for i in range(3, max_cols + 1):
+            ws.column_dimensions[get_column_letter(i)].width = 16
+
+        styled(ws, [f"{r.code} — {r.company_name}"], title_font, title_fill,
+               pad=2)
+        ws.append(["Source", r.source_url])
+        ws.append(["Fetched (Asia/Dhaka)", r.fetched_at.strftime(DHAKA_FMT)])
+
+        for number, section in enumerate(r.sections, 1):
+            ws.append([])
+            width = (2 if section.kind == "kv"
+                     else max((len(row) for row in section.rows), default=2))
+            styled(ws, [f"{number}. {section.title}"], section_font,
+                   section_fill, pad=width)
+            if section.kind == "kv":
+                styled(ws, ["Field", "Value"], header_font, header_fill)
+                body = section.rows
+            else:
+                # A matrix's first row is its natural column header.
+                styled(ws, section.rows[0], header_font, header_fill)
+                body = section.rows[1:]
+            for row in body:
+                ws.append(row)
+
+        offset = len(r.sections)
+        for number, graph in enumerate(r.graphs, 1):
+            ws.append([])
+            styled(ws, [f"{offset + number}. {graph.title}"], section_font,
+                   section_fill, pad=2)
+            styled(ws, graph.columns, header_font, header_fill)
+            if graph.points:
+                for date, value in graph.points:
+                    ws.append([date, value])
+            else:
+                ws.append(["No data available"])
+
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()

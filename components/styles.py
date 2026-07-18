@@ -472,8 +472,8 @@ div.stDownloadButton button:not([kind="primary"]) [data-testid="stIconMaterial"]
 }
 div.stDownloadButton button:hover { transform: translateY(-2px); border-color: var(--border-2); background: var(--surface-2); }
 div.stButton button:hover { transform: translateY(-2px); border-color: var(--border-2); background: var(--surface-2); }
-div.stButton button[kind="primary"] { background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; border: none; box-shadow: 0 6px 20px rgba(79,70,229,0.35); }
-div.stButton button[kind="primary"]:hover { filter: brightness(1.1); box-shadow: 0 10px 28px rgba(79,70,229,0.5); }
+div.stButton button[kind="primary"], div.stDownloadButton button[kind="primary"] { background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; border: none; box-shadow: 0 6px 20px rgba(79,70,229,0.35); }
+div.stButton button[kind="primary"]:hover, div.stDownloadButton button[kind="primary"]:hover { filter: brightness(1.1); box-shadow: 0 10px 28px rgba(79,70,229,0.5); }
 /* The button caption is a nested <p>, and broad text rules (the sidebar's
    `p`, the dialog's `*`) colour that <p> DIRECTLY — beating the white the
    button would hand down by inheritance. On gradient buttons that meant
@@ -489,6 +489,53 @@ div.stButton button:disabled { background: var(--surface) !important; color: var
 }
 .st-key-btn_refresh button:hover { filter: brightness(1.12); box-shadow: 0 0 26px rgba(220,38,38,0.65); }
 .st-key-btn_refresh button * { color: #fff !important; }
+
+/* ==================== Bulk Download page ========================== */
+/* The stock-picker grid: a rounded, indigo-tinted scroll panel so it reads
+   as ONE closed box — the user can tell where the list ends and the
+   Download buttons begin. The tint works over both themes' backdrops. */
+div[class*="st-key-bulkdl_grid"] {
+    background: rgba(99,102,241,0.07) !important;
+    border: 1px solid rgba(99,102,241,0.28) !important;
+    border-radius: 18px !important;
+    padding: 0.9rem 1.1rem !important;
+    box-shadow: 0 8px 26px var(--shadow-card);
+}
+div[class*="st-key-bulkdl_grid"] [data-testid="stVerticalBlock"] { gap: 0.4rem; }
+div[class*="st-key-bulkdl_grid"] .stCheckbox label p { font-size: 0.88rem !important; }
+/* The two Download dropdown triggers are this page's main call-to-action:
+   the primary gradient in both themes (unstyled popover triggers fall back
+   to the pinned dark base theme — a black unreadable bar in light mode). */
+div[class*="st-key-bulkdl_pop_"] button {
+    width: 100% !important;
+    background: linear-gradient(135deg, #2563eb, #7c3aed) !important;
+    border: none !important; color: #fff !important;
+    font-weight: 800 !important; border-radius: 12px !important;
+    justify-content: center !important; min-height: 2.45rem !important;
+    box-shadow: 0 6px 20px rgba(79,70,229,0.35);
+    transition: all .2s ease;
+}
+div[class*="st-key-bulkdl_pop_"] button p { font-size: 0.9rem !important; }
+div[class*="st-key-bulkdl_pop_"] button:not(:disabled) *,
+div[class*="st-key-bulkdl_pop_"] button:not(:disabled) [data-testid="stIconMaterial"],
+div[class*="st-key-bulkdl_pop_"] button:not(:disabled) svg {
+    color: #fff !important; fill: #fff !important;
+}
+div[class*="st-key-bulkdl_pop_"] button:hover:not(:disabled) {
+    filter: brightness(1.1); transform: translateY(-1px);
+    box-shadow: 0 10px 28px rgba(79,70,229,0.5);
+}
+/* Disabled (nothing selected): quiet themed pill, not the dark-base bar */
+div[class*="st-key-bulkdl_pop_"] button:disabled {
+    background: var(--surface) !important;
+    border: 1px dashed var(--border-2) !important;
+    color: var(--text-faint) !important;
+    box-shadow: none; cursor: not-allowed;
+}
+div[class*="st-key-bulkdl_pop_"] button:disabled *,
+div[class*="st-key-bulkdl_pop_"] button:disabled [data-testid="stIconMaterial"] {
+    color: var(--text-faint) !important; fill: var(--text-faint) !important;
+}
 
 /* ============================ Inputs ============================= */
 [data-testid="InputInstructions"] { display: none !important; }

@@ -25,6 +25,7 @@ Data source: <https://www.dsebd.org/latest_share_price_scroll_l.php>
 | **Live dashboard** | Selected stocks render as responsive, colour-coded **glass cards** (green up / red down / blue flat) that auto-refresh — hover animations & micro-interactions |
 | **Deep-dive analytics** | Per-stock page: basic info, price data, trading activity, day-range indicator, performance gauge (bullish/neutral/bearish), AI momentum, and Plotly charts (live price trend, volume, price-vs-volume) |
 | **Company report download** | Every card has a **Download** dropdown (CSV / Excel): the stock's full DSE company page — every table — plus the Closing Price, Total Trade and Total Volume graphs at 2 years |
+| **Bulk report download** | Dedicated page: search + checkbox-pick any set of stocks — or **☑ Select all ~396** — then one Download dropdown (CSV / Excel) exports every company report (same structure as the card download) into ONE file, with a live progress bar |
 | **Historical storage** | Tracked stocks are recorded to **SQLite** (`dse_market.db`) for trend charts & analysis |
 | **Watchlists** | Create / load / delete named groups ("Banking", "High Volume", …); load one onto the dashboard in a click |
 | **Price alerts** | Per-stock rules — `above`, `below`, `enters a band`, `exits a band` — with per-rule cooldown; fires a **WhatsApp** message and logs every alert |
@@ -50,6 +51,7 @@ DSE/
 │   ├── details.py          #   Stock Details (deep-dive analytics)
 │   ├── watchlists.py       #   Watchlists (CRUD)
 │   ├── alerts.py           #   Alert rules + history
+│   ├── bulk_download.py    #   Bulk Download (any set / whole market → one file)
 │   └── settings.py         #   Twilio setup, test message, status
 │
 ├── components/             # Reusable UI building blocks
@@ -119,7 +121,9 @@ needed.
    refresh cycles).
 4. **Watchlists** — save themed groups and load them onto the dashboard.
 5. **Alerts** — create price rules; matches fire a WhatsApp message.
-6. **Settings** — Twilio credentials, **test message**, refresh cadence,
+6. **Bulk Download** — search + tick any stocks (or **☑ Select all**) and
+   export every company report as one structured CSV / Excel file.
+7. **Settings** — Twilio credentials, **test message**, refresh cadence,
    and data status.
 
 Use the **sidebar** to Start/Stop live monitoring, set the refresh
