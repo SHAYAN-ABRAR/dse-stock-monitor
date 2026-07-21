@@ -4,12 +4,14 @@ views/bulk_download.py
 Bulk Report Download — export the full DSE company report (every table
 on the company page + the Closing Price / Total Trade / Total Volume
 graphs at 2 years) for ANY set of stocks, or the entire market, as one
-well-structured CSV or Excel file.
+file in three formats: a machine-parsable flat CSV data table (one
+fixed-schema row per data point — loads straight into Excel / pandas /
+AI tools), the human-readable CSV report layout, or an Excel workbook.
 
 The per-stock content is identical to the dashboard cards' Download
 button (see company.py); this page bundles many stocks into one file.
 Layout keeps everything above the fold: one control bar (search ·
-select all · clear · the single Download dropdown with CSV / Excel
+select all · clear · the single Download dropdown with the three format
 options), the progress / ready banner right under it, then the
 scrollable checkbox grid — so the Download button never has to be
 scrolled to. Reports are fetched concurrently but gently.
@@ -22,14 +24,27 @@ from datetime import datetime
 import streamlit as st
 
 from company import (BULK_MAX_WORKERS, fetch_reports_bulk,
-                     reports_to_csv_bytes, reports_to_excel_bytes)
+                     reports_to_csv_bytes, reports_to_excel_bytes,
+                     reports_to_flat_csv_bytes)
 from runtime import get_monitor, hero
+
+# The three export formats. "flat" is one machine-parsable table (for
+# Excel / pandas / AI analysis); "csv" is the human-readable report
+# layout; "xlsx" the styled workbook.
+FMT_BUILDER = {"flat": reports_to_flat_csv_bytes,
+               "csv": reports_to_csv_bytes,
+               "xlsx": reports_to_excel_bytes}
+FMT_LABEL = {"flat": "CSV data table", "csv": "CSV report", "xlsx": "Excel"}
+FMT_EXT = {"flat": "csv", "csv": "csv", "xlsx": "xlsx"}
+FMT_STEM = {"flat": "DSE_bulk_data", "csv": "DSE_bulk_report",
+            "xlsx": "DSE_bulk_report"}
 
 monitor = get_monitor()
 
 hero("Bulk Report Download",
      "Every table + 2-year graphs per stock · pick any set, or ☑ Select all "
-     "~396, and export as one CSV / Excel file")
+     "~396, and export as one file — flat CSV data table (analysis-ready), "
+     "CSV report, or Excel")
 
 quotes = monitor.all_quotes()
 if not quotes:
@@ -108,11 +123,20 @@ with top[3].popover(label, icon=":material/download:", width="stretch",
                     disabled=not selected_codes, key=f"bulkdl_pop_{nonce}"):
     st.caption(f"**{n_sel} stocks** — full DSE company page (every table) + "
                "the three 2-year graphs per stock, in one file.")
-    if st.button("Download as CSV", icon=":material/csv:",
-                 width="stretch", key="bulkdl_csv"):
+    if st.button("CSV — data table (for analysis)", icon=":material/dataset:",
+                 width="stretch", key="bulkdl_flat",
+                 help="One flat table (six fixed columns, one row per data "
+                      "point) that loads straight into Excel, pandas or an "
+                      "AI tool — the machine-readable choice"):
+        _queue_job(selected_codes, "flat")
+    if st.button("CSV — formatted report", icon=":material/csv:",
+                 width="stretch", key="bulkdl_csv",
+                 help="Human-readable layout mirroring the DSE company page, "
+                      "one block per stock — for reading, not parsing"):
         _queue_job(selected_codes, "csv")
-    if st.button("Download as Excel", icon=":material/table_view:",
-                 width="stretch", key="bulkdl_xlsx"):
+    if st.button("Excel workbook", icon=":material/table_view:",
+                 width="stretch", key="bulkdl_xlsx",
+                 help="Styled workbook: Overview sheet + one sheet per stock"):
         _queue_job(selected_codes, "xlsx")
 
 st.caption(f"Tick stocks below (selection survives searching) — or "
@@ -136,11 +160,10 @@ if job:
 
     reports, failures = fetch_reports_bulk(codes, progress_cb=_on_progress)
     progress.progress(1.0, text=f"Fetched {len(reports)} / {total} — "
-                                f"building the {fmt.upper()} file…")
+                                f"building the {FMT_LABEL[fmt]} file…")
     with st.spinner(f"Structuring {len(reports)} reports into one "
-                    f"{fmt.upper()} file…"):
-        data = (reports_to_csv_bytes(reports, failures) if fmt == "csv"
-                else reports_to_excel_bytes(reports, failures))
+                    f"{FMT_LABEL[fmt]} file…"):
+        data = FMT_BUILDER[fmt](reports, failures)
     st.session_state["_bulkdl_ready"] = {
         "bytes": data, "fmt": fmt,
         "count": len(reports), "failures": failures,
@@ -155,13 +178,14 @@ if ready:
     size_mb = len(ready["bytes"]) / 1_000_000
     r1, r2, r3 = st.columns([2.2, 1.6, 0.5], gap="small",
                             vertical_alignment="center")
-    r1.success(f"**{fmt.upper()} ready** — {count} stocks · "
+    r1.success(f"**{FMT_LABEL[fmt]} ready** — {count} stocks · "
                f"{size_mb:.1f} MB", icon="✅")
     r2.download_button(
-        f"💾 Save {fmt.upper()} file",
+        f"💾 Save {FMT_LABEL[fmt]}",
         data=ready["bytes"],
-        file_name=f"DSE_bulk_report_{count}stocks_{ready['stamp']}.{fmt}",
-        mime=("text/csv" if fmt == "csv"
+        file_name=(f"{FMT_STEM[fmt]}_{count}stocks_{ready['stamp']}"
+                   f".{FMT_EXT[fmt]}"),
+        mime=("text/csv" if FMT_EXT[fmt] == "csv"
               else "application/vnd.openxmlformats-officedocument"
                    ".spreadsheetml.sheet"),
         type="primary", width="stretch", on_click="ignore",

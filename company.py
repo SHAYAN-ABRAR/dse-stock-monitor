@@ -624,6 +624,85 @@ def reports_to_csv_bytes(reports: List[CompanyReport],
     return buf.getvalue().encode("utf-8-sig")
 
 
+# Fixed schema of the flat (analysis-ready) bulk CSV: one row per data
+# point, so the whole export is a single machine-parsable table.
+FLAT_CSV_COLUMNS = ["Trading Code", "Company Name", "Section", "Item",
+                    "Field", "Value"]
+
+_NUMBER_RE = re.compile(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?")
+
+
+def _coerce_number(text: str):
+    """'1,234.50' → 1234.5 so columns load as numbers, not text.
+
+    Only fully-numeric cells are converted (thousand separators dropped);
+    dates, percentages and free text pass through verbatim.
+    """
+    if _NUMBER_RE.fullmatch(text):
+        number = float(text.replace(",", ""))
+        return int(number) if number.is_integer() else number
+    return text
+
+
+def _flat_rows(report: CompanyReport) -> List[List[object]]:
+    """One report as tidy rows matching ``FLAT_CSV_COLUMNS``.
+
+    kv sections carry the label in Field; matrix sections use their first
+    row as the column header (as the Excel export does), the row's first
+    cell as Item and the header cell as Field; graph points use the date
+    as Item. Every row has exactly six cells.
+    """
+    code, name = report.code, report.company_name
+    rows: List[List[object]] = []
+    for section in report.sections:
+        if section.kind == "kv":
+            for row in section.rows:
+                rows.append([code, name, section.title, "",
+                             row[0] if row else "",
+                             _coerce_number(row[1]) if len(row) > 1 else ""])
+        elif section.rows:
+            header, body = section.rows[0], section.rows[1:]
+            if not body:                    # lone row — keep it as data
+                header, body = [], section.rows
+            for row in body:
+                item = row[0] if row else ""
+                cells = [(j, cell) for j, cell in enumerate(row[1:], 1)
+                         if cell != ""]
+                if not cells:               # text-only line (e.g. address)
+                    rows.append([code, name, section.title, "", "", item])
+                for j, cell in cells:
+                    field_name = (header[j] if j < len(header) and header[j]
+                                  else f"Column {j + 1}")
+                    rows.append([code, name, section.title, item,
+                                 field_name, _coerce_number(cell)])
+    for graph in report.graphs:
+        value_name = graph.columns[1] if len(graph.columns) > 1 else "Value"
+        for date, value in graph.points:
+            rows.append([code, name, graph.title, date, value_name, value])
+    return rows
+
+
+def reports_to_flat_csv_bytes(reports: List[CompanyReport],
+                              failures: Sequence[Failure] = ()) -> bytes:
+    """ONE machine-parsable CSV: a single flat table over many stocks.
+
+    Unlike ``reports_to_csv_bytes`` (a human-readable report layout with
+    stacked per-stock blocks), this is tidy "long" data: a constant
+    six-column header and one row per data point, so pandas / Excel / AI
+    tools can load it directly (``pd.read_csv`` works as-is). Failed
+    stocks appear as rows with Section ``FETCH FAILED``. UTF-8 with BOM
+    so Excel opens it with the right charset.
+    """
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf)
+    writer.writerow(FLAT_CSV_COLUMNS)
+    for report in reports:
+        writer.writerows(_flat_rows(report))
+    for code, reason in failures:
+        writer.writerow([code, "", "FETCH FAILED", "", "Reason", reason])
+    return buf.getvalue().encode("utf-8-sig")
+
+
 def _safe_sheet_name(code: str, used: set) -> str:
     """Excel-legal, unique sheet name for a trading code (≤31 chars)."""
     name = re.sub(r"[\[\]:*?/\\]", "_", code)[:31] or "STOCK"
